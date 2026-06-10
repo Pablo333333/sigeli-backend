@@ -1,0 +1,322 @@
+// Configuración de base de datos
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- ENUMS ---
+
+enum Role {
+  COMUNERO
+  EMPRESA
+  ADMIN
+  AUDITOR
+}
+
+enum ExperienciaCategoria {
+  MINERIA
+  GENERAL
+}
+
+enum TrustLevel {
+  VERDE
+  AMARILLO
+  ROJO
+}
+
+enum ApplicationStatus {
+  PRESENTACION_CV
+  SEGURIDAD
+  EVALUACION
+  ENTREVISTA
+  MEDICO
+  INDUCCION
+  CONTRATADO
+  RECHAZADO
+}
+
+enum ContractStatus {
+  ACTIVO
+  VENCIDO
+  TERMINADO_PREMATURO
+  RENOVADO
+}
+
+enum Gender {
+  MASCULINO
+  FEMENINO
+  OTRO
+}
+
+// --- MODELOS CORE ---
+
+model Tenant {
+  id        String    @id @default(uuid())
+  name      String    // Nombre de la Comunidad o Empresa Minera
+  type      String    // 'MINERA' | 'COMUNIDAD'
+  trustLevel TrustLevel @default(VERDE) // Semáforo de Confianza
+  users     User[]
+  reclamos  Reclamo[] @relation("TenantReclamos")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model Reclamo {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  tenantId    String
+  tenant      Tenant   @relation("TenantReclamos", fields: [tenantId], references: [id])
+  motivo      String   @db.Text
+  estado      String   @default("PENDIENTE") // PENDIENTE, EN_REVISION, RESUELTO
+  blockchainHash String? // Para inmutabilidad
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id              String      @id @default(uuid())
+  dni             String      @unique
+  email           String?     @unique
+  phone           String?
+  fullName        String
+  role            Role        @default(COMUNERO)
+  gender          Gender?     // Para analítica de participación
+  biometricHash   String?     // Hash de biometría facial para auth segura
+  trustLevel      TrustLevel  @default(VERDE)
+  points          Int         @default(0) // Sistema de Gamificación
+  sector          String?     // Para censo por sector (Agrario, Minero, etc.)
+  
+  // Relaciones
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id])
+  cv              CV?
+  postulaciones   Postulacion[]
+  contratos       Contrato[]
+  capacitaciones  CapacitacionUsuario[]
+  evaluaciones    Evaluacion[] @relation("Evaluado")
+  reclamos        Reclamo[]
+  notificaciones  Notificacion[]
+  
+  // Auditoría
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+}
+
+model CV {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id])
+  
+  aiSummary         String?   @db.Text // Perfil profesional generado por IA
+  yearsExperience   Decimal   @default(0) @db.Decimal(5, 2)
+  yearsExperienceMining Decimal @default(0) @db.Decimal(5, 2)
+  yearsExperienceGeneral Decimal @default(0) @db.Decimal(5, 2)
+  multimedia        Json?     // { "videos": [...], "photos": [...] }
+  blockchainHash    String?   // Certificación de veracidad del CV
+  
+  experiencias      ExperienciaLaboral[]
+  educaciones       Educacion[]
+  habilidades       Habilidad[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+}
+
+model ExperienciaLaboral {
+  id              String    @id @default(uuid())
+  cvId            String
+  cv              CV        @relation(fields: [cvId], references: [id])
+  company         String
+  position        String
+  categoria       ExperienciaCategoria @default(GENERAL)
+  startDate       DateTime
+  endDate         DateTime?
+  isVerified      Boolean   @default(false)
+  verificationHash String?  // Hash blockchain de la constancia
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+}
+
+model Educacion {
+  id              String    @id @default(uuid())
+  cvId            String
+  cv              CV        @relation(fields: [cvId], references: [id])
+  institucion     String
+  titulo          String
+  tipoEstudio     String    // Ej: Primaria, Secundaria, Técnico, Universitario
+  startDate       DateTime
+  endDate         DateTime?
+  isVerified      Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+}
+
+model Oferta {
+  id              String    @id @default(uuid())
+  title           String
+  description     String    @db.Text
+  requirements    Json      // Skills requeridos, años exp, etc.
+  salary          Decimal   @db.Decimal(12, 2)
+  sector          String
+  vacancies       Int       @default(1)
+  status          String    @default("ABIERTA") // ABIERTA, CERRADA
+  
+  postulaciones   Postulacion[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+}
+
+model Postulacion {
+  id              String            @id @default(uuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id])
+  ofertaId        String
+  oferta          Oferta            @relation(fields: [ofertaId], references: [id])
+  
+  status          ApplicationStatus @default(PRESENTACION_CV)
+  timeline        Json              // Histórico de cambios de estado con fechas
+  aiMatchingScore Decimal?          @db.Decimal(5, 2) // Score de compatibilidad IA
+  
+  contrato        Contrato?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+}
+
+model Contrato {
+  id                String         @id @default(uuid())
+  postulacionId     String         @unique
+  postulacion       Postulacion    @relation(fields: [postulacionId], references: [id])
+  userId            String
+  user              User           @relation(fields: [userId], references: [id])
+  
+  startDate         DateTime
+  endDate           DateTime
+  salary            Decimal        @db.Decimal(12, 2)
+  regimenLaboral    String?        // Régimen laboral (ej: 728, 1057, etc.)
+  status            ContractStatus @default(ACTIVO)
+  stabilityIndex    Decimal        @db.Decimal(5, 2) // Cálculo de estabilidad laboral
+  
+  blockchainProof   String?        // Hash del contrato legal firmado
+  evaluaciones      Evaluacion[]
+  
+  createdAt         DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+}
+
+model Capacitacion {
+  id              String    @id @default(uuid())
+  title           String
+  description     String
+  learningPath    Json      // Ruta sugerida de aprendizaje
+  sector          String
+  futureDemand    Boolean   @default(false) // Si es una habilidad demandada a futuro
+  
+  usuarios        CapacitacionUsuario[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+}
+
+model CapacitacionUsuario {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  capacitacionId  String
+  capacitacion    Capacitacion @relation(fields: [capacitacionId], references: [id])
+  
+  progress        Int       @default(0)
+  isCertified     Boolean   @default(false)
+  certificateHash String?   // Certificación dual blockchain
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Evaluacion {
+  id                String    @id @default(uuid())
+  contractId        String
+  contract          Contrato  @relation(fields: [contractId], references: [id])
+  evaluatorId       String
+  evaluadoId        String
+  evaluado          User      @relation("Evaluado", fields: [evaluadoId], references: [id])
+  
+  satisfaccion      Int       @default(5) // Escala 1-5
+  discriminacion    Boolean   @default(false)
+  feedbackTexto     String?   @db.Text
+  grabacionUrl      String?   // Para video/audio
+  sentimientoIA     Json?     // Resultado de análisis (score, emociones, etc.)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+}
+
+model Habilidad {
+  id              String    @id @default(uuid())
+  cvId            String
+  cv              CV        @relation(fields: [cvId], references: [id])
+  name            String
+  isVerified      Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model AuditLog {
+  id              String    @id @default(uuid())
+  entityName      String    // Ej: 'Contrato'
+  entityId        String
+  action          String    // 'CREATE', 'UPDATE', 'DELETE'
+  oldData         Json?
+  newData         Json?
+  userId          String    // Quién realizó el cambio
+  immutableHash   String    // Hash para garantizar integridad del log
+  
+  createdAt       DateTime  @default(now())
+}
+
+model Notificacion {
+  id        String   @id @default(uuid())
+  usuarioId String
+  user      User     @relation(fields: [usuarioId], references: [id])
+  mensaje   String
+  tipo      String   // 'OFERTA', 'VENCIMIENTO', 'GENERAL'
+  estado    String   @default("PENDIENTE") // PENDIENTE, ENVIADO, ERROR
+  leido     Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Acuerdo {
+  id                String   @id @default(uuid())
+  titulo            String
+  descripcion       String   @db.Text
+  fechaFirma        DateTime
+  fechaCumplimiento DateTime?
+  estado            String   @default("PENDIENTE") // PENDIENTE, CUMPLIDO
+  documentoUrl      String?
+  partesInvolucradas Json     // ["Comunidad X", "Empresa Y"]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

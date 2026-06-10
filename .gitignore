@@ -1,0 +1,31 @@
+# Dependencias de Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Compilación / Salida de NestJS
+dist/
+build/
+
+# Variables de entorno y credenciales secretas (¡MUY IMPORTANTE!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de Prisma autogenerados (Opcional, pero recomendado)
+# Nota: El esquema (.prisma) SÍ se sube, pero los logs de migraciones locales o bases de datos SQLite locales no.
+*.db
+*.db-journal
+
+# Logs del sistema y de Nest
+logs/
+*.log
+
+# Configuraciones de editores que no querés compartir
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
