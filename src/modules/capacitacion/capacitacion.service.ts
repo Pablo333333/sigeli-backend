@@ -127,4 +127,44 @@ export class CapacitacionService {
       });
     }
   }
+
+  async findAll() {
+    return this.prisma.capacitacion.findMany({
+      include: {
+        usuarios: true,
+      },
+    });
+  }
+
+  /**
+   * Calcula métricas predictivas para la IA de Trayectoria.
+   */
+  async getMetricasIA() {
+    const [totalComuneros, comunerosEnProgreso] = await Promise.all([
+      this.prisma.user.count({ where: { role: 'COMUNERO', deletedAt: null } }),
+      this.prisma.user.count({
+        where: {
+          role: 'COMUNERO',
+          deletedAt: null,
+          capacitaciones: {
+            some: {
+              progress: { gt: 0 },
+              isCertified: false,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const porcentajeAscenso = totalComuneros > 0 
+      ? Math.round((comunerosEnProgreso / totalComuneros) * 100) 
+      : 0;
+
+    return {
+      porcentajeAscenso,
+      totalComuneros,
+      comunerosEnProgreso,
+      timestamp: new Date(),
+    };
+  }
 }

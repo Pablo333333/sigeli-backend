@@ -6,6 +6,9 @@ export const softDeleteMiddleware = (prisma: PrismaClient) => {
   /***********************************/
   prisma.$use(async (params, next) => {
     if (['User', 'CV', 'ExperienciaLaboral', 'Educacion', 'Oferta', 'Postulacion', 'Contrato', 'Capacitacion', 'Evaluacion'].includes(params.model)) {
+      // Asegurar que params.args exista
+      if (!params.args) params.args = {};
+
       if (params.action === 'findUnique' || params.action === 'findFirst') {
         // Cambiar a findFirst para permitir filtrar por deletedAt
         params.action = 'findFirst';
@@ -36,6 +39,9 @@ export const softDeleteMiddleware = (prisma: PrismaClient) => {
   /***********************************/
   prisma.$use(async (params, next) => {
     if (['User', 'CV', 'ExperienciaLaboral', 'Educacion', 'Oferta', 'Postulacion', 'Contrato', 'Capacitacion', 'Evaluacion'].includes(params.model)) {
+      // Asegurar que params.args exista
+      if (!params.args) params.args = {};
+
       if (params.action === 'delete') {
         params.action = 'update';
         params.args.data = { deletedAt: new Date() };

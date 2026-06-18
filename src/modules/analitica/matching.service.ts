@@ -25,7 +25,7 @@ export class MatchingService {
     // Buscamos CVs que tengan al menos una de las habilidades requeridas
     const cvs = await this.prisma.cV.findMany({
       include: {
-        user: { select: { fullName: true, dni: true, trustLevel: true } },
+        user: { select: { fullName: true, dni: true, trustLevel: true, sector: true } },
         habilidades: true,
       },
     });
@@ -34,14 +34,38 @@ export class MatchingService {
       const skillsComunero = cv.habilidades.map(h => h.name.toLowerCase());
       const coincidencias = skillsRequeridas.filter((s: string) => skillsComunero.includes(s));
       
-      const score = (coincidencias.length / skillsRequeridas.size) * 100;
+      // Cálculo de score base por habilidades
+      let score = (coincidencias.length / skillsRequeridas.length) * 70; // 70% peso habilidades
+
+      // Bonus por experiencia (20% peso)
+      const expRequerida = (requirements?.yearsExperience || 0);
+      if (cv.yearsExperience.toNumber() >= expRequerida) {
+        score += 20;
+      } else if (cv.yearsExperience.toNumber() > 0) {
+        score += (cv.yearsExperience.toNumber() / expRequerida) * 20;
+      }
+
+      // Bonus por sector (10% peso)
+      if (cv.user.sector === oferta.sector) {
+        score += 10;
+      }
+
+      // Bonus por TrustLevel (Multiplicador de confianza)
+      let multiplier = 1.0;
+      if (cv.user.trustLevel === 'VERDE') multiplier = 1.0;
+      if (cv.user.trustLevel === 'AMARILLO') multiplier = 0.8;
+      if (cv.user.trustLevel === 'ROJO') multiplier = 0.5;
+
+      const finalScore = score * multiplier;
 
       return {
         userId: cv.userId,
         fullName: cv.user.fullName,
         trustLevel: cv.user.trustLevel,
-        matchingScore: parseFloat(score.toFixed(2)),
+        matchingScore: parseFloat(finalScore.toFixed(2)),
         skillsCoincidentes: coincidencias,
+        experiencia: cv.yearsExperience,
+        sector: cv.user.sector,
       };
     })
     .filter(s => s.matchingScore > 0)

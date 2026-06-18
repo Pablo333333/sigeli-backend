@@ -61,9 +61,21 @@ model Tenant {
   trustLevel TrustLevel @default(VERDE) // Semáforo de Confianza
   users     User[]
   reclamos  Reclamo[] @relation("TenantReclamos")
+  semaforoHistory SemaforoHistory[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+}
+
+model SemaforoHistory {
+  id            String     @id @default(uuid())
+  tenantId      String
+  tenant        Tenant     @relation(fields: [tenantId], references: [id])
+  nivelAnterior TrustLevel
+  nivelNuevo    TrustLevel
+  justificacion String     @db.Text
+  userId        String?
+  createdAt     DateTime   @default(now())
 }
 
 model Reclamo {
@@ -74,6 +86,7 @@ model Reclamo {
   tenant      Tenant   @relation("TenantReclamos", fields: [tenantId], references: [id])
   motivo      String   @db.Text
   estado      String   @default("PENDIENTE") // PENDIENTE, EN_REVISION, RESUELTO
+  respuestaOficial String? @db.Text // Respuesta personalizada o medidas tomadas
   blockchainHash String? // Para inmutabilidad
   
   createdAt   DateTime @default(now())
@@ -84,6 +97,7 @@ model User {
   id              String      @id @default(uuid())
   dni             String      @unique
   email           String?     @unique
+  password        String      // Para autenticación
   phone           String?
   fullName        String
   role            Role        @default(COMUNERO)
@@ -116,6 +130,7 @@ model CV {
   user              User      @relation(fields: [userId], references: [id])
   
   aiSummary         String?   @db.Text // Perfil profesional generado por IA
+  specialty         String?   // Especialidad u oficio principal (Ej: Electricista)
   yearsExperience   Decimal   @default(0) @db.Decimal(5, 2)
   yearsExperienceMining Decimal @default(0) @db.Decimal(5, 2)
   yearsExperienceGeneral Decimal @default(0) @db.Decimal(5, 2)

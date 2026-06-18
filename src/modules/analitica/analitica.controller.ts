@@ -32,6 +32,14 @@ export class AnaliticaController {
     return this.exportService.generateGRIReport();
   }
 
+  @Get('export/comuneros')
+  async exportComuneros(@Res() res: Response) {
+    const buffer = await this.exportService.exportComunerosToExcel();
+    res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.attachment(`padron-comuneros-sigeli-${new Date().getTime()}.xlsx`);
+    return res.send(buffer);
+  }
+
   @Get('export/csv')
   async exportCSV(@Res() res: Response) {
     const csv = await this.exportService.exportToCSV();

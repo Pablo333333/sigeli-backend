@@ -14,11 +14,20 @@ export class TransparenciaService {
    */
   async registrarReclamo(dto: CreateReclamoDto) {
     try {
+      // Si no se proporciona userId, o si se proporciona nombreAfectado,
+      // el sistema registra el reclamo. 
+      // En una implementación real, interceptaríamos el tenantId del usuario logueado.
+      
+      const user = await this.prisma.user.findUnique({
+        where: { id: dto.userId },
+        select: { tenantId: true, fullName: true }
+      });
+
       return await this.prisma.reclamo.create({
         data: {
           userId: dto.userId,
-          tenantId: dto.tenantId,
-          motivo: dto.motivo,
+          tenantId: dto.tenantId, // Empresa/Contratista involucrada
+          motivo: `${dto.categoria}: ${dto.motivo}`,
           estado: 'PENDIENTE',
           // En una implementación real, aquí generaríamos el blockchainHash
           blockchainHash: `sha256-reclamo-${Date.now()}`,
@@ -36,18 +45,28 @@ export class TransparenciaService {
   /**
    * Actualiza el semáforo de confianza con justificación obligatoria.
    */
-  async actualizarSemaforo(tenantId: string, nivel: TrustLevel, justificacion: string) {
+  async actualizarSemaforo(tenantId: string, nivel: TrustLevel, justificacion: string, userId?: string) {
     try {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
       if (!tenant) throw new NotFoundException('Empresa/Comunidad no encontrada');
+
+      const nivelAnterior = tenant.trustLevel;
 
       const updated = await this.prisma.tenant.update({
         where: { id: tenantId },
         data: { trustLevel: nivel },
       });
 
-      // El AuditInterceptor se encargará de registrar la acción, 
-      // pero podemos añadir lógica adicional aquí si es necesario.
+      // Guardamos en el historial para auditoría social
+      await this.prisma.semaforoHistory.create({
+        data: {
+          tenantId,
+          nivelAnterior,
+          nivelNuevo: nivel,
+          justificacion,
+          userId,
+        },
+      });
       
       return {
         tenant: updated.name,
@@ -75,12 +94,15 @@ export class TransparenciaService {
   }
 
   /**
-   * Actualiza el estado de un reclamo.
+   * Actualiza el estado de un reclamo y añade respuesta oficial.
    */
-  async actualizarEstadoReclamo(id: string, estado: string) {
+  async actualizarEstadoReclamo(id: string, estado: string, respuestaOficial?: string) {
     return this.prisma.reclamo.update({
       where: { id },
-      data: { estado },
+      data: { 
+        estado,
+        respuestaOficial: respuestaOficial || undefined
+      },
     });
   }
 
@@ -90,7 +112,7 @@ export class TransparenciaService {
   async getIndicadoresTransparencia() {
     const [tenants, totalReclamos, reclamosPendientes] = await Promise.all([
       this.prisma.tenant.findMany({
-        select: { name: true, trustLevel: true, type: true },
+        select: { id: true, name: true, trustLevel: true, type: true },
       }),
       this.prisma.reclamo.count(),
       this.prisma.reclamo.count({ where: { estado: 'PENDIENTE' } }),

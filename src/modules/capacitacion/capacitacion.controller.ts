@@ -34,4 +34,14 @@ export class CapacitacionController {
   async getRuta(@Param('userId', new ParseUUIDPipe()) userId: string) {
     return this.capacitacionService.getRutaAprendizaje(userId);
   }
+
+  @Get()
+  async findAll() {
+    return this.capacitacionService.findAll();
+  }
+
+  @Get('metricas-ia')
+  async getMetricasIA() {
+    return this.capacitacionService.getMetricasIA();
+  }
 }

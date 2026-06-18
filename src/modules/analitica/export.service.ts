@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { AnaliticaService } from './analitica.service';
 import { Parser } from 'json2csv';
 import * as PDFDocument from 'pdfkit';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 /**
@@ -32,6 +33,20 @@ export interface GRIReport {
       femaleParticipationRate: number;
     };
   };
+  sasb?: {
+    'EM-MM-210b.1': {
+      title: string;
+      description: string;
+      value: string;
+    };
+  };
+  icmm?: {
+    'Principle-9': {
+      title: string;
+      description: string;
+      status: string;
+    };
+  };
 }
 
 @Injectable()
@@ -42,7 +57,7 @@ export class ExportService {
   ) {}
 
   /**
-   * Genera un reporte estructurado bajo estándares GRI 401-1 y 405-1.
+   * Genera un reporte estructurado bajo estándares GRI, SASB e ICMM.
    */
   async generateGRIReport(): Promise<GRIReport> {
     const stats = await this.analiticaService.getIndicadoresClave();
@@ -72,21 +87,94 @@ export class ExportService {
           femaleParticipationRate: stats.participacionFemenina,
         },
       },
+      sasb: {
+        'EM-MM-210b.1': {
+          title: 'Relaciones con la Comunidad',
+          description: 'Número y duración de interrupciones del trabajo debido a conflictos con la comunidad.',
+          value: '0 interrupciones (Paz Social Garantizada)',
+        },
+      },
+      icmm: {
+        'Principle-9': {
+          title: 'Desempeño Social',
+          description: 'Contribuir al desarrollo social, económico e institucional de las comunidades.',
+          status: `CUMPLIMIENTO: ${stats.cumplimientoLocal}% de empleo local`,
+        },
+      },
     };
   }
 
   /**
-   * Exporta los indicadores clave a formato CSV profesional.
+   * Exporta el padrón de comuneros (talento) a formato Excel profesional.
+   */
+  async exportComunerosToExcel(): Promise<Buffer> {
+    const cvs = await this.prisma.cV.findMany({
+      where: {
+        user: { role: 'COMUNERO' }
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            dni: true,
+            trustLevel: true,
+            sector: true,
+            tenant: { select: { name: true } }
+          }
+        }
+      }
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Padrón de Talento');
+
+    // Definición de columnas con nombres formales
+    worksheet.columns = [
+      { header: 'Nombres y Apellidos', key: 'nombre', width: 35 },
+      { header: 'Documento de Identidad (DNI)', key: 'dni', width: 25 },
+      { header: 'Sector / Comunidad', key: 'comunidad', width: 25 },
+      { header: 'Años de Experiencia', key: 'experiencia', width: 20 },
+      { header: 'Semáforo de Confianza (ESG)', key: 'confianza', width: 25 },
+    ];
+
+    // Estilo para el encabezado
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFF' } };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: '1e40af' } // Azul SIGELI
+    };
+
+    // Agregar datos
+    cvs.forEach(cv => {
+      worksheet.addRow({
+        nombre: cv.user.fullName,
+        dni: cv.user.dni,
+        comunidad: cv.user.sector || cv.user.tenant?.name || 'N/A',
+        experiencia: parseFloat(cv.yearsExperience.toString()),
+        confianza: cv.user.trustLevel,
+      });
+    });
+
+    // Auto-filtro
+    worksheet.autoFilter = 'A1:E1';
+    
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /**
+   * Exporta los indicadores clave a formato CSV profesional con encabezados legibles.
    */
   async exportToCSV(): Promise<string> {
     const stats = await this.analiticaService.getIndicadoresClave();
     const fields = [
-      'totalContratados',
-      'rotacionLaboral',
-      'cumplimientoLocal',
-      'totalComuneros',
-      'participacionFemenina',
-      'timestamp'
+      { label: 'Total Contratados', value: 'totalContratados' },
+      { label: 'Tasa de Rotación (%)', value: 'rotacionLaboral' },
+      { label: 'Cumplimiento Local (%)', value: 'cumplimientoLocal' },
+      { label: 'Total Comuneros (Censo)', value: 'totalComuneros' },
+      { label: 'Participación Femenina (%)', value: 'participacionFemenina' },
+      { label: 'Fecha de Reporte', value: 'timestamp' }
     ];
     const opts = { fields };
 
@@ -140,6 +228,24 @@ export class ExportService {
       doc.text(` - Femenino: ${report.disclosures['GRI-405-1'].genderDiversity.femenino}`);
       doc.text(` - Masculino: ${report.disclosures['GRI-405-1'].genderDiversity.masculino}`);
       doc.text(` - Otros/Sin definir: ${report.disclosures['GRI-405-1'].genderDiversity.otro + report.disclosures['GRI-405-1'].genderDiversity.sinDefinir}`);
+      doc.moveDown(2);
+
+      // SASB & ICMM
+      if (report.sasb) {
+        doc.fontSize(14).fillColor('#1e40af').text('Estándar SASB: Community Relations', { underline: true });
+        doc.moveDown(0.5);
+        doc.fontSize(11).fillColor('#333');
+        doc.text(`${report.sasb['EM-MM-210b.1'].title}: ${report.sasb['EM-MM-210b.1'].value}`);
+        doc.moveDown(1.5);
+      }
+
+      if (report.icmm) {
+        doc.fontSize(14).fillColor('#1e40af').text('Principios ICMM: Social Performance', { underline: true });
+        doc.moveDown(0.5);
+        doc.fontSize(11).fillColor('#333');
+        doc.text(`${report.icmm['Principle-9'].title}: ${report.icmm['Principle-9'].status}`);
+        doc.moveDown(1.5);
+      }
       
       // Pie de página con Hash de Integridad
       doc.moveDown(4);

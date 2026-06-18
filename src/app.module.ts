@@ -13,12 +13,16 @@ import { VozModule } from './modules/voz/voz.module';
 import { EvaluacionModule } from './modules/evaluacion/evaluacion.module';
 import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
 import { GobernanzaModule } from './modules/gobernanza/gobernanza.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { IAModule } from './modules/ia/ia.module';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     PrismaModule, 
     CommonModule,
+    AuthModule,
+    IAModule,
     CVModule, 
     PostulacionModule, 
     ContratoModule,

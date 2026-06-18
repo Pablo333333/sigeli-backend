@@ -1,9 +1,10 @@
-import { IsUUID, IsString } from 'class-validator';
+import { IsUUID, IsString, IsOptional } from 'class-validator';
 
 export class CreatePostulacionDto {
   @IsUUID()
   @IsString()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @IsUUID()
   @IsString()

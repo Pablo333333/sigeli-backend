@@ -7,8 +7,21 @@ export class OfertaService {
 
   async findAll() {
     return this.prisma.oferta.findMany({
-      where: { status: 'ABIERTA' },
-      take: 5,
+      where: { 
+        status: 'ABIERTA',
+        vacancies: { gt: 0 },
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        title: true,
+        sector: true,
+        vacancies: true,
+        _count: {
+          select: { postulaciones: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
   }
 

@@ -8,9 +8,26 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateCVDto {
+  @IsOptional()
   @IsUUID()
   @IsString()
-  userId: string;
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  dni?: string;
+
+  @IsOptional()
+  @IsString()
+  sector?: string;
+
+  @IsOptional()
+  @IsString()
+  specialty?: string;
 
   @IsOptional()
   @IsString()

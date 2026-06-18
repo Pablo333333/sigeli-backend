@@ -22,9 +22,52 @@ export class CVService {
   ) {}
 
   async createOrUpdateCV(dto: CreateCVDto) {
-    const { userId, ...cvData } = dto;
+    let { userId, ...cvData } = dto;
 
     try {
+      // 1. Si no hay userId, pero hay DNI, verificamos si el usuario ya existe
+      if (!userId && cvData.dni) {
+        const existingUser = await this.prisma.user.findUnique({
+          where: { dni: cvData.dni }
+        });
+        if (existingUser) {
+          userId = existingUser.id;
+        }
+      }
+
+      // 2. Si sigue sin haber userId, creamos un nuevo usuario con rol COMUNERO
+      if (!userId) {
+        // Buscamos un tenant por defecto de tipo COMUNIDAD
+        let tenant = await this.prisma.tenant.findFirst({
+          where: { type: 'COMUNIDAD' }
+        });
+
+        // Si no existe, creamos uno básico para que no rompa la relación
+        if (!tenant) {
+          tenant = await this.prisma.tenant.create({
+            data: {
+              name: cvData.sector || 'Comunidad General',
+              type: 'COMUNIDAD'
+            }
+          });
+        }
+
+        const newUser = await this.prisma.user.create({
+          data: {
+            fullName: cvData.fullName || 'Nuevo Comunero',
+            dni: cvData.dni || `TEMP-${Date.now()}`,
+            // Encriptamos el email para mantener consistencia con UserService
+            email: this.cryptoService.encrypt(cvData.dni ? `${cvData.dni}@sigeli.com` : `user-${Date.now()}@sigeli.com`),
+            sector: cvData.sector,
+            role: 'COMUNERO',
+            password: 'password123', // Password por defecto para registro administrativo
+            tenantId: tenant.id
+          }
+        });
+        userId = newUser.id;
+      }
+
+      // 3. Verificamos que el usuario exista (por seguridad)
       const userExists = await this.prisma.user.findUnique({
         where: { id: userId },
       });
@@ -33,10 +76,13 @@ export class CVService {
         throw new NotFoundException(`El usuario con ID ${userId} no existe.`);
       }
 
+      // 4. Creamos o actualizamos el CV
       const cv = await this.prisma.cV.upsert({
         where: { userId },
         update: {
           aiSummary: cvData.aiSummary,
+          specialty: cvData.specialty,
+          yearsExperience: new Prisma.Decimal(cvData.yearsExperience || 0),
           multimedia: cvData.multimedia as Prisma.JsonObject,
           blockchainHash: cvData.blockchainHash,
           updatedAt: new Date(),
@@ -44,7 +90,8 @@ export class CVService {
         create: {
           userId,
           aiSummary: cvData.aiSummary,
-          yearsExperience: new Prisma.Decimal(0),
+          specialty: cvData.specialty,
+          yearsExperience: new Prisma.Decimal(cvData.yearsExperience || 0),
           yearsExperienceMining: new Prisma.Decimal(0),
           yearsExperienceGeneral: new Prisma.Decimal(0),
           multimedia: cvData.multimedia as Prisma.JsonObject,
@@ -52,11 +99,22 @@ export class CVService {
         },
       });
 
-      await this.recalculateYearsExperience(cv.id);
+      // 5. Recalculamos años de experiencia SOLO si hay registros de experiencia laboral
+      const hasExperienceRecords = await this.prisma.experienciaLaboral.count({
+        where: { cvId: cv.id, deletedAt: null }
+      });
+
+      if (hasExperienceRecords > 0) {
+        await this.recalculateYearsExperience(cv.id);
+      }
 
       return this.findByUserId(userId);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
+      // Capturar errores de duplicados de Prisma (P2002)
+      if (error.code === 'P2002') {
+        throw new InternalServerErrorException(`El DNI o Email ya están registrados en el sistema.`);
+      }
       throw new InternalServerErrorException(`Error al procesar el CV: ${error.message}`);
     }
   }
@@ -204,6 +262,32 @@ export class CVService {
     }
 
     return this.decryptCV(cv);
+  }
+
+  async findAll() {
+    const cvs = await this.prisma.cV.findMany({
+      where: {
+        user: {
+          role: 'COMUNERO'
+        }
+      },
+      include: {
+        habilidades: true,
+        user: {
+          select: {
+            fullName: true,
+            dni: true,
+            trustLevel: true,
+            role: true,
+            points: true,
+            sector: true,
+            createdAt: true,
+            tenant: { select: { name: true } }
+          }
+        }
+      }
+    });
+    return cvs.map(cv => this.decryptCV(cv));
   }
 
   private decryptCV(cv: any) {
