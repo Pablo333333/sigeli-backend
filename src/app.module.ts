@@ -15,6 +15,7 @@ import { NotificacionesModule } from './modules/notificaciones/notificaciones.mo
 import { GobernanzaModule } from './modules/gobernanza/gobernanza.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { IAModule } from './modules/ia/ia.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { IAModule } from './modules/ia/ia.module';
     CommonModule,
     AuthModule,
     IAModule,
+    ChatModule,
     CVModule, 
     PostulacionModule, 
     ContratoModule,

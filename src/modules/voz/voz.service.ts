@@ -60,6 +60,23 @@ export class VozService {
     };
   }
 
+  async transcribirAudio(file: Express.Multer.File): Promise<string> {
+    this.logger.log(`Transcribiendo audio de tamaño: ${file?.size || 0} bytes`);
+    
+    // Simulación de STT (Speech-to-Text)
+    // En un entorno real, aquí usaríamos OpenAI Whisper, Google Cloud Speech-to-Text o AWS Transcribe
+    const simulaciones = [
+      '¿Cómo puedo ver mis puntos de capacitación?',
+      '¿Qué vacantes hay disponibles en la mina?',
+      '¿Cuál es el estado de mi postulación actual?',
+      '¿Cómo puedo actualizar mi CV modular?',
+      '¿Qué documentos necesito para el puesto de operador?'
+    ];
+    
+    // Retornamos una consulta aleatoria para la simulación
+    return simulaciones[Math.floor(Math.random() * simulaciones.length)];
+  }
+
   private interpretarIntencion(mensaje: string): string {
     const m = mensaje.toLowerCase();
     if (m.includes('postulacion') || m.includes('tramite') || m.includes('como voy')) return 'ESTADO_POSTULACION';

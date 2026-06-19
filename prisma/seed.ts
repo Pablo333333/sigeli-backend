@@ -34,6 +34,24 @@ async function main() {
     },
   });
 
+  // Crear usuario comunero de prueba solicitado por el usuario
+  const testPassword = await bcrypt.hash('Password123!', 10);
+  await prisma.user.upsert({
+    where: { email: 'comunero.test@sigeli.com' },
+    update: {
+      password: testPassword,
+      role: Role.COMUNERO,
+    },
+    create: {
+      email: 'comunero.test@sigeli.com',
+      password: testPassword,
+      fullName: 'Comunero de Prueba',
+      dni: '00000000',
+      role: Role.COMUNERO,
+      tenantId: tenant.id,
+    },
+  });
+
   // Crear empresas socias / contratistas
   const empresas = [
     { name: 'Ferreyros S.A.', type: 'MINERA' },
