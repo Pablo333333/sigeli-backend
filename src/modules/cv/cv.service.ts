@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CryptoService } from '../../common/services/crypto.service';
+import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { CreateCVDto } from './dto/create-cv.dto';
 import { UpdateExperienciaDto } from './dto/update-experiencia.dto';
 import { UpdateEducacionDto } from './dto/update-educacion.dto';
@@ -19,13 +20,19 @@ export class CVService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  async createOrUpdateCV(dto: CreateCVDto) {
+  async createOrUpdateCV(dto: CreateCVDto, files?: {
+    profilePhoto?: Express.Multer.File[],
+    dniFront?: Express.Multer.File[],
+    dniBack?: Express.Multer.File[],
+    presentationVideo?: Express.Multer.File[],
+  }) {
     let { userId, ...cvData } = dto;
 
     try {
-      // 1. Si no hay userId, pero hay DNI, verificamos si el usuario ya existe
+      // ... (existing code for user lookup/creation)
       if (!userId && cvData.dni) {
         const existingUser = await this.prisma.user.findUnique({
           where: { dni: cvData.dni }
@@ -76,6 +83,28 @@ export class CVService {
         throw new NotFoundException(`El usuario con ID ${userId} no existe.`);
       }
 
+      // 3.5 Procesar archivos multimedia si existen
+      const multimediaUrls: any = { ...cvData.multimedia as any };
+      
+      if (files) {
+        if (files.profilePhoto?.[0]) {
+          const result = await this.cloudinaryService.uploadImage(files.profilePhoto[0]);
+          multimediaUrls.profilePhoto = result.secure_url;
+        }
+        if (files.dniFront?.[0]) {
+          const result = await this.cloudinaryService.uploadImage(files.dniFront[0]);
+          multimediaUrls.dniFront = result.secure_url;
+        }
+        if (files.dniBack?.[0]) {
+          const result = await this.cloudinaryService.uploadImage(files.dniBack[0]);
+          multimediaUrls.dniBack = result.secure_url;
+        }
+        if (files.presentationVideo?.[0]) {
+          const result = await this.cloudinaryService.uploadFile(files.presentationVideo[0], 'sigeli/cv/videos');
+          multimediaUrls.presentationVideo = result.secure_url;
+        }
+      }
+
       // 4. Creamos o actualizamos el CV
       const cv = await this.prisma.cV.upsert({
         where: { userId },
@@ -83,7 +112,7 @@ export class CVService {
           aiSummary: cvData.aiSummary,
           specialty: cvData.specialty,
           yearsExperience: new Prisma.Decimal(cvData.yearsExperience || 0),
-          multimedia: cvData.multimedia as Prisma.JsonObject,
+          multimedia: multimediaUrls as Prisma.JsonObject,
           blockchainHash: cvData.blockchainHash,
           updatedAt: new Date(),
         },
@@ -94,7 +123,7 @@ export class CVService {
           yearsExperience: new Prisma.Decimal(cvData.yearsExperience || 0),
           yearsExperienceMining: new Prisma.Decimal(0),
           yearsExperienceGeneral: new Prisma.Decimal(0),
-          multimedia: cvData.multimedia as Prisma.JsonObject,
+          multimedia: multimediaUrls as Prisma.JsonObject,
           blockchainHash: cvData.blockchainHash,
         },
       });
