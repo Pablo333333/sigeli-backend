@@ -6,9 +6,12 @@ async function bootstrap() {
   
   app.enableCors();
 
-  // Forzamos a Nest a escuchar en todas las IPs de la red local
-// Forzamos a Nest a escuchar en el puerto 3001 y en toda la red local
-await app.listen(3001, '0.0.0.0');
-console.log(`Application is running on: http://192.168.0.113:3001`);
+  // Railway asigna el puerto mediante la variable de entorno PORT.
+  // Si no existe (estás en local), usa 3001.
+  const port = process.env.PORT || 3001;
+  
+  await app.listen(port, '0.0.0.0');
+  
+  console.log(`Application is running on: http://0.0.0.0:${port}`);
 }
 bootstrap();
