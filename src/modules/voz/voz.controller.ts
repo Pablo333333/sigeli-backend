@@ -19,10 +19,22 @@ export class VozController {
     @Body('usuarioId') usuarioId: string,
     @Body('idioma') idioma: string,
   ) {
+    console.log('[VOZ_CONTROLLER] Petición de transcripción recibida');
+    console.log('[VOZ_CONTROLLER] Archivo:', file ? {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    } : 'NINGUNO');
+    console.log('[VOZ_CONTROLLER] Datos:', { usuarioId, idioma });
+
     // 1. Transcribir audio a texto (Simulado)
     const mensajeTranscrito = await this.vozService.transcribirAudio(file);
+    console.log('[VOZ_CONTROLLER] Mensaje transcrito:', mensajeTranscrito);
     
     // 2. Procesar consulta con el texto obtenido
-    return this.vozService.procesarConsulta(usuarioId, mensajeTranscrito, idioma);
+    const respuesta = await this.vozService.procesarConsulta(usuarioId, mensajeTranscrito, idioma);
+    console.log('[VOZ_CONTROLLER] Respuesta generada:', respuesta);
+    
+    return respuesta;
   }
 }
