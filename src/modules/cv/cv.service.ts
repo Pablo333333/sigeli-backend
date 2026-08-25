@@ -503,17 +503,23 @@ export class CVService {
   /**
    * Búsqueda robusta de CVs por DNI, nombre y/o empresa (experiencia o contratos).
    * Incluye comuneros sin CV aún (ficha mínima) cuando coinciden DNI/nombre.
+   * `trabajoMina` filtra quienes tienen experiencia minera o contrato.
    */
   async search(params: {
     q?: string;
     dni?: string;
     nombre?: string;
     empresa?: string;
+    trabajoMina?: boolean | string;
   }) {
     const q = (params.q || '').trim();
     const dni = (params.dni || '').replace(/\D/g, '');
     const nombre = (params.nombre || '').trim();
     const empresa = (params.empresa || '').trim();
+    const soloMina =
+      params.trabajoMina === true ||
+      String(params.trabajoMina) === '1' ||
+      String(params.trabajoMina).toLowerCase() === 'true';
 
     const userWhere: Prisma.UserWhereInput = {
       role: 'COMUNERO',
@@ -522,12 +528,35 @@ export class CVService {
     if (dni) userWhere.dni = { contains: dni };
     if (nombre) userWhere.fullName = { contains: nombre, mode: 'insensitive' };
 
-    if (q && !dni && !nombre && !empresa) {
+    if (q && !dni && !nombre && !empresa && !soloMina) {
       const qDigits = q.replace(/\D/g, '');
       userWhere.OR = [
         ...(qDigits.length > 0 ? [{ dni: { contains: qDigits } }] : []),
         { fullName: { contains: q, mode: 'insensitive' } },
         { sector: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (soloMina) {
+      userWhere.AND = [
+        ...(Array.isArray(userWhere.AND) ? userWhere.AND : userWhere.AND ? [userWhere.AND] : []),
+        {
+          OR: [
+            {
+              cv: {
+                OR: [
+                  { yearsExperienceMining: { gt: 0 } },
+                  {
+                    experiencias: {
+                      some: { deletedAt: null, categoria: 'MINERIA' },
+                    },
+                  },
+                ],
+              },
+            },
+            { contratos: { some: { deletedAt: null } } },
+          ],
+        },
       ];
     }
 
@@ -566,11 +595,21 @@ export class CVService {
             habilidades: true,
             experiencias: {
               where: { deletedAt: null },
-              select: { company: true, position: true, area: true },
+              select: {
+                company: true,
+                position: true,
+                area: true,
+                categoria: true,
+              },
               take: 8,
               orderBy: { startDate: 'desc' },
             },
           },
+        },
+        contratos: {
+          where: { deletedAt: null },
+          select: { id: true },
+          take: 1,
         },
       },
       orderBy: { fullName: 'asc' },
@@ -578,31 +617,46 @@ export class CVService {
     });
 
     return users.map((u) => {
-      const { cv, ...user } = u;
+      const { cv, contratos, ...user } = u as any;
+      const yearsMining = cv?.yearsExperienceMining
+        ? Number(cv.yearsExperienceMining)
+        : 0;
+      const tieneExpMina =
+        yearsMining > 0 ||
+        (cv?.experiencias || []).some((e: any) => e.categoria === 'MINERIA');
+      const trabajoEnMina = !!(tieneExpMina || (contratos?.length || 0) > 0);
+
       if (cv) {
-        return this.decryptCV({
-          ...cv,
-          user: {
-            id: user.id,
-            fullName: user.fullName,
-            dni: user.dni,
-            trustLevel: user.trustLevel,
-            role: user.role,
-            points: user.points,
-            sector: user.sector,
-            createdAt: user.createdAt,
-            tenant: user.tenant,
-          },
-        });
+        return {
+          ...this.decryptCV({
+            ...cv,
+            user: {
+              id: user.id,
+              fullName: user.fullName,
+              dni: user.dni,
+              trustLevel: user.trustLevel,
+              role: user.role,
+              points: user.points,
+              sector: user.sector,
+              gender: user.gender,
+              createdAt: user.createdAt,
+              tenant: user.tenant,
+            },
+          }),
+          trabajoEnMina,
+          yearsExperienceMining: yearsMining,
+        };
       }
       return {
         id: null,
         userId: user.id,
         specialty: null,
         yearsExperience: 0,
+        yearsExperienceMining: 0,
         aiSummary: null,
         habilidades: [],
         experiencias: [],
+        trabajoEnMina,
         user: {
           id: user.id,
           fullName: user.fullName,
@@ -611,6 +665,7 @@ export class CVService {
           role: user.role,
           points: user.points,
           sector: user.sector,
+          gender: user.gender,
           createdAt: user.createdAt,
           tenant: user.tenant,
         },

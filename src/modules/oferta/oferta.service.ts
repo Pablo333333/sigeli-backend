@@ -79,6 +79,47 @@ export class OfertaService {
     return this.mapOferta(oferta);
   }
 
+  /** Destinatarios aptos: comuneros activos (+ directiva para monitoreo). */
+  private async destinatariosAlertaOferta(oferta: {
+    sector?: string | null;
+    title?: string;
+  }) {
+    const comuneros = await this.prisma.user.findMany({
+      where: { role: Role.COMUNERO, deletedAt: null },
+      select: { id: true, sector: true, cv: { select: { specialty: true } } },
+    });
+
+    const sectorHint = (oferta.sector || '').toLowerCase();
+    const titleHint = (oferta.title || '').toLowerCase();
+
+    // Preferir match por sector/especialidad; si nadie matchea, notificar a todos
+    const aptos = comuneros.filter((c) => {
+      const sec = (c.sector || '').toLowerCase();
+      const spec = (c.cv?.specialty || '').toLowerCase();
+      if (!sectorHint && !titleHint) return true;
+      if (sectorHint && sec && (sec.includes(sectorHint) || sectorHint.includes(sec))) {
+        return true;
+      }
+      if (spec && titleHint && (titleHint.includes(spec) || spec.split(/\s+/).some((w) => w.length > 3 && titleHint.includes(w)))) {
+        return true;
+      }
+      return false;
+    });
+
+    const targets = (aptos.length > 0 ? aptos : comuneros).map((c) => ({ id: c.id }));
+
+    const directiva = await this.prisma.user.findMany({
+      where: { role: Role.DIRECTIVA, deletedAt: null },
+      select: { id: true },
+    });
+
+    const seen = new Set(targets.map((t) => t.id));
+    for (const d of directiva) {
+      if (!seen.has(d.id)) targets.push(d);
+    }
+    return targets;
+  }
+
   async create(dto: CreateOfertaDto, notify = true) {
     try {
       let companyName = dto.companyName;
@@ -115,15 +156,17 @@ export class OfertaService {
         },
       });
 
+      let alertasEnviadas = 0;
       if (notify && oferta.status === OfertaStatus.VIGENTE) {
-        const comuneros = await this.prisma.user.findMany({
-          where: { role: Role.COMUNERO, deletedAt: null },
-          select: { id: true },
-        });
-        await this.notificacionesService.enviarAlertaOferta(oferta, comuneros);
+        const destinatarios = await this.destinatariosAlertaOferta(oferta);
+        const result = await this.notificacionesService.enviarAlertaOferta(
+          oferta,
+          destinatarios,
+        );
+        alertasEnviadas = result?.enviadas ?? 0;
       }
 
-      return this.mapOferta(oferta);
+      return { ...this.mapOferta(oferta), alertasEnviadas };
     } catch (error) {
       throw new InternalServerErrorException(`Error al crear oferta: ${error.message}`);
     }
@@ -179,7 +222,21 @@ export class OfertaService {
       },
     });
 
-    return this.mapOferta(oferta);
+    // Re-publicación: si pasa a VIGENTE, volver a notificar
+    let alertasEnviadas = 0;
+    if (
+      oferta.status === OfertaStatus.VIGENTE &&
+      existing.status !== OfertaStatus.VIGENTE
+    ) {
+      const destinatarios = await this.destinatariosAlertaOferta(oferta);
+      const result = await this.notificacionesService.enviarAlertaOferta(
+        oferta,
+        destinatarios,
+      );
+      alertasEnviadas = result?.enviadas ?? 0;
+    }
+
+    return { ...this.mapOferta(oferta), alertasEnviadas };
   }
 
   async softDelete(id: string) {

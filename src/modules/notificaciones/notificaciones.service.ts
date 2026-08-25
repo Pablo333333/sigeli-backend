@@ -15,18 +15,38 @@ export class NotificacionesService {
     private readonly contratoService: ContratoService,
   ) {}
 
-  async enviarAlertaOferta(oferta: any, comuneros: any[]) {
-    this.logger.log(`Enviando alertas para la oferta: ${oferta.title}`);
+  async enviarAlertaOferta(oferta: any, destinatarios: { id: string }[]) {
+    if (!destinatarios?.length) {
+      this.logger.warn(`Sin destinatarios para alerta de oferta: ${oferta.title}`);
+      return { enviadas: 0 };
+    }
 
-    const promesas = comuneros.map((comunero) =>
-      this.registrarNotificacion({
-        usuarioId: comunero.id,
-        mensaje: `Nueva oportunidad laboral: ${oferta.title} en el sector ${oferta.sector}. ¡Postula ahora!`,
-        tipo: TipoNotificacion.OFERTA,
-      }),
+    const empresa = oferta.companyName || oferta.tenant?.name || 'Empresa convocante';
+    const mensaje = `Nueva oferta laboral: "${oferta.title}" — ${empresa}. Sector: ${oferta.sector || 'N/D'}. Vacantes: ${oferta.vacancies ?? 1}. ¡Revisa Ofertas y postula!`;
+
+    this.logger.log(
+      `Broadcast oferta "${oferta.title}" → ${destinatarios.length} destinatario(s)`,
     );
 
-    await Promise.all(promesas);
+    // createMany en lotes (evita saturar DB)
+    const chunk = 80;
+    let enviadas = 0;
+    for (let i = 0; i < destinatarios.length; i += chunk) {
+      const slice = destinatarios.slice(i, i + chunk);
+      const result = await this.prisma.notificacion.createMany({
+        data: slice.map((u) => ({
+          usuarioId: u.id,
+          mensaje,
+          tipo: TipoNotificacion.OFERTA,
+          estado: 'ENVIADO',
+          leido: false,
+        })),
+      });
+      enviadas += result.count;
+    }
+
+    this.logger.log(`[SIMULACIÓN SMS/PUSH] ${enviadas} alertas de oferta enviadas`);
+    return { enviadas };
   }
 
   async enviarAlertaVencimiento(contrato: any) {

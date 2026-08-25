@@ -81,8 +81,9 @@ export class CVController {
     @Query('dni') dni?: string,
     @Query('nombre') nombre?: string,
     @Query('empresa') empresa?: string,
+    @Query('trabajoMina') trabajoMina?: string,
   ) {
-    return this.cvService.search({ q, dni, nombre, empresa });
+    return this.cvService.search({ q, dni, nombre, empresa, trabajoMina });
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -93,9 +94,10 @@ export class CVController {
     @Query('dni') dni?: string,
     @Query('nombre') nombre?: string,
     @Query('empresa') empresa?: string,
+    @Query('trabajoMina') trabajoMina?: string,
   ) {
-    if (q || dni || nombre || empresa) {
-      return this.cvService.search({ q, dni, nombre, empresa });
+    if (q || dni || nombre || empresa || trabajoMina) {
+      return this.cvService.search({ q, dni, nombre, empresa, trabajoMina });
     }
     return this.cvService.findAll();
   }

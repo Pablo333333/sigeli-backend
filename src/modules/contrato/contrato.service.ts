@@ -25,6 +25,8 @@ const contratoInclude = {
       phone: true,
       sector: true,
       email: true,
+      gender: true,
+      cv: { select: { multimedia: true, specialty: true } },
     },
   },
   postulacion: {
@@ -55,8 +57,38 @@ export class ContratoService {
     private readonly biometriaService: BiometriaService,
   ) {}
 
+  private calcEdadFromBirth(raw?: string | null): number | null {
+    if (!raw) return null;
+    const digits = String(raw).replace(/\D/g, '');
+    let d: Date | null = null;
+    if (digits.length === 8) {
+      const dd = Number(digits.slice(0, 2));
+      const mm = Number(digits.slice(2, 4));
+      const yyyy = Number(digits.slice(4, 8));
+      d = new Date(yyyy, mm - 1, dd);
+      if (d.getFullYear() !== yyyy || d.getMonth() !== mm - 1 || d.getDate() !== dd) d = null;
+    } else {
+      const iso = new Date(raw);
+      d = isNaN(iso.getTime()) ? null : iso;
+    }
+    if (!d) return null;
+    const today = new Date();
+    let age = today.getFullYear() - d.getFullYear();
+    const m = today.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+    return age;
+  }
+
+  private sexoLabel(gender?: string | null) {
+    if (gender === 'MASCULINO') return 'Masculino';
+    if (gender === 'FEMENINO') return 'Femenino';
+    if (gender === 'OTRO') return 'Otro';
+    return null;
+  }
+
   /**
    * Prefill de matriz desde postulación/oferta/CV (para formulario).
+   * Incluye edad/sexo autocompletados del comunero (campos clave Word).
    */
   async getPrefill(postulacionId: string) {
     const postulacion = await this.prisma.postulacion.findUnique({
@@ -68,7 +100,8 @@ export class ContratoService {
             fullName: true,
             dni: true,
             sector: true,
-            cv: { select: { specialty: true } },
+            gender: true,
+            cv: { select: { specialty: true, multimedia: true } },
           },
         },
         oferta: true,
@@ -87,6 +120,11 @@ export class ContratoService {
     const end = new Date(start);
     end.setMonth(end.getMonth() + months);
 
+    const multimedia = (postulacion.user.cv?.multimedia as any) || {};
+    const birthDate = multimedia?.profileMeta?.birthDate || null;
+    const edad = this.calcEdadFromBirth(birthDate);
+    const sexo = this.sexoLabel(postulacion.user.gender);
+
     return {
       postulacionId: postulacion.id,
       yaTieneContrato: !!postulacion.contrato,
@@ -97,6 +135,10 @@ export class ContratoService {
         dni: postulacion.user.dni,
         sector: postulacion.user.sector,
         specialty: postulacion.user.cv?.specialty || null,
+        edad,
+        sexo,
+        gender: postulacion.user.gender,
+        birthDate,
       },
       matriz: {
         companyName: oferta?.companyName || null,
@@ -239,7 +281,7 @@ export class ContratoService {
         });
       }
 
-      return contrato;
+      return this.enrichContrato(contrato);
     } catch (error) {
       if (
         error instanceof NotFoundException ||
@@ -261,7 +303,7 @@ export class ContratoService {
     });
     if (!existing) throw new NotFoundException('Contrato no encontrado');
 
-    return this.prisma.contrato.update({
+    const updated = await this.prisma.contrato.update({
       where: { id },
       data: {
         ...(dto.startDate ? { startDate: new Date(dto.startDate) } : {}),
@@ -295,14 +337,26 @@ export class ContratoService {
       },
       include: contratoInclude,
     });
+    return this.enrichContrato(updated);
+  }
+
+  private enrichContrato(c: any) {
+    const multimedia = c.user?.cv?.multimedia as any;
+    const birthDate = multimedia?.profileMeta?.birthDate || null;
+    return {
+      ...c,
+      comuneroEdad: this.calcEdadFromBirth(birthDate),
+      comuneroSexo: this.sexoLabel(c.user?.gender),
+    };
   }
 
   async findAll() {
-    return this.prisma.contrato.findMany({
+    const rows = await this.prisma.contrato.findMany({
       where: { deletedAt: null },
       include: contratoInclude,
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map((c) => this.enrichContrato(c));
   }
 
   /**
@@ -373,7 +427,7 @@ export class ContratoService {
       include: contratoInclude,
       orderBy: { createdAt: 'desc' },
       take: 100,
-    });
+    }).then((rows) => rows.map((c) => this.enrichContrato(c)));
   }
 
   async getContratosProximosAVencer(dias: number) {
