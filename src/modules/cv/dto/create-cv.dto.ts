@@ -33,9 +33,48 @@ export class CreateCVDto {
   @IsString()
   aiSummary?: string;
 
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Type(() => Number)
-  yearsExperience: number;
+  yearsExperience?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Type(() => Number)
+  yearsExperienceMining?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Type(() => Number)
+  yearsExperienceGeneral?: number;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
+  @IsOptional()
+  @IsString()
+  educationLevel?: string;
+
+  @IsOptional()
+  @IsString()
+  titles?: string;
+
+  @IsOptional()
+  @IsString()
+  currentOccupation?: string;
+
+  @IsOptional()
+  @IsString()
+  softSkills?: string;
+
+  @IsOptional()
+  @IsString()
+  nativeLanguage?: string;
+
+  @IsOptional()
+  @IsString()
+  vulnerableGroup?: string;
 
   @IsOptional()
   @IsObject()

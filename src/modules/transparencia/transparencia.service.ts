@@ -14,22 +14,44 @@ export class TransparenciaService {
    */
   async registrarReclamo(dto: CreateReclamoDto) {
     try {
-      // Si no se proporciona userId, o si se proporciona nombreAfectado,
-      // el sistema registra el reclamo. 
-      // En una implementación real, interceptaríamos el tenantId del usuario logueado.
-      
+      if (!dto.userId) {
+        throw new InternalServerErrorException('userId es requerido para registrar un reclamo.');
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: dto.userId },
         select: { tenantId: true, fullName: true }
       });
 
+      if (!user) {
+        throw new NotFoundException('Usuario no encontrado para registrar el reclamo.');
+      }
+
+      let tenantId = dto.tenantId;
+      if (!tenantId) {
+        const minera = await this.prisma.tenant.findFirst({
+          where: { type: 'MINERA' },
+          select: { id: true },
+        });
+        tenantId = minera?.id || user.tenantId;
+      }
+
+      if (!tenantId) {
+        throw new InternalServerErrorException('No se pudo determinar la empresa involucrada (tenantId).');
+      }
+
+      const motivoParts = [
+        dto.categoria,
+        dto.motivo,
+        dto.descripcion,
+      ].filter((part) => !!part && String(part).trim().length > 0);
+
       return await this.prisma.reclamo.create({
         data: {
           userId: dto.userId,
-          tenantId: dto.tenantId, // Empresa/Contratista involucrada
-          motivo: `${dto.categoria}: ${dto.motivo}`,
+          tenantId,
+          motivo: motivoParts.join(' | '),
           estado: 'PENDIENTE',
-          // En una implementación real, aquí generaríamos el blockchainHash
           blockchainHash: `sha256-reclamo-${Date.now()}`,
         },
         include: {
@@ -38,6 +60,7 @@ export class TransparenciaService {
         },
       });
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException(`Error al registrar reclamo: ${error.message}`);
     }
   }

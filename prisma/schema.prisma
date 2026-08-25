@@ -15,6 +15,7 @@ enum Role {
   EMPRESA
   ADMIN
   AUDITOR
+  DIRECTIVA
 }
 
 enum ExperienciaCategoria {
@@ -52,6 +53,32 @@ enum Gender {
   OTRO
 }
 
+enum TipoManoObra {
+  NO_CALIFICADA
+  SEMI_CALIFICADA
+  CALIFICADA
+  PROFESIONAL
+  TECNICO
+  PRACTICAS
+}
+
+enum OfertaStatus {
+  VIGENTE
+  CULMINADO
+}
+
+enum ComunicacionEstado {
+  PENDIENTE
+  LEIDO
+  RESPONDIDO
+}
+
+/// Diferencia capacitaciones del CV vs programa de entrenamiento laboral (Antamina/socio)
+enum TipoCapacitacion {
+  CV_HISTORIAL
+  PROGRAMA_ENTRENAMIENTO
+}
+
 // --- MODELOS CORE ---
 
 model Tenant {
@@ -62,6 +89,7 @@ model Tenant {
   users     User[]
   reclamos  Reclamo[] @relation("TenantReclamos")
   semaforoHistory SemaforoHistory[]
+  ofertas   Oferta[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -111,9 +139,13 @@ model User {
   tenantId        String
   tenant          Tenant      @relation(fields: [tenantId], references: [id])
   cv              CV?
-  postulaciones   Postulacion[]
+  postulaciones   Postulacion[] @relation("PostulacionCandidato")
+  postulacionesEnviadas Postulacion[] @relation("PostulacionSubmittedBy")
+  comunicacionesEnviadas ComunicacionPostulacion[] @relation("ComunicacionRemitente")
+  comunicacionesRecibidas ComunicacionPostulacion[] @relation("ComunicacionDestinatario")
   contratos       Contrato[]
   capacitaciones  CapacitacionUsuario[]
+  encuestaEntrenamiento EncuestaEntrenamientoLaboral?
   evaluaciones    Evaluacion[] @relation("Evaluado")
   reclamos        Reclamo[]
   notificaciones  Notificacion[]
@@ -152,6 +184,10 @@ model ExperienciaLaboral {
   cv              CV        @relation(fields: [cvId], references: [id])
   company         String
   position        String
+  /// Área / unidad (ej. Mantenimiento, Operaciones)
+  area            String?
+  /// Logros / responsabilidades destacadas
+  logros          String?   @db.Text
   categoria       ExperienciaCategoria @default(GENERAL)
   startDate       DateTime
   endDate         DateTime?
@@ -180,34 +216,55 @@ model Educacion {
 }
 
 model Oferta {
-  id              String    @id @default(uuid())
-  title           String
-  description     String    @db.Text
-  requirements    Json      // Skills requeridos, años exp, etc.
-  salary          Decimal   @db.Decimal(12, 2)
-  sector          String
-  vacancies       Int       @default(1)
-  status          String    @default("ABIERTA") // ABIERTA, CERRADA
-  
-  postulaciones   Postulacion[]
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id                    String         @id @default(uuid())
+  title                 String         // Nombre del puesto
+  description           String         @db.Text // Funciones / detalle
+  perfilRequisitos      String?        @db.Text
+  requirements          Json?          // Skills estructurados / legacy
+  salary                Decimal        @db.Decimal(12, 2)
+  sector                String         // Ubicación / sector geográfico
+  vacancies             Int            @default(1)
+  status                OfertaStatus   @default(VIGENTE)
+
+  // Matriz Ciro — oportunidad laboral
+  tenantId              String?        // Convocante / empresa
+  tenant                Tenant?        @relation(fields: [tenantId], references: [id])
+  companyName           String?        // Denormalizado para listados rápidos
+  tipoManoObra          TipoManoObra   @default(NO_CALIFICADA)
+  fechaInicioProyectada DateTime?
+  fechaCierre           DateTime?      // Para "falta X días" / vigencia
+  regimenLaboral        String?
+  tiempoContratoMeses   Int?
+  horarioTrabajo        String?
+  sistemaTrabajo        String?
+  notaAviso             String?        @db.Text
+
+  postulaciones         Postulacion[]
+
+  createdAt             DateTime       @default(now()) // Fecha de registro
+  updatedAt             DateTime       @updatedAt
+  deletedAt             DateTime?
 }
 
 model Postulacion {
   id              String            @id @default(uuid())
   userId          String
-  user            User              @relation(fields: [userId], references: [id])
+  user            User              @relation("PostulacionCandidato", fields: [userId], references: [id])
   ofertaId        String
   oferta          Oferta            @relation(fields: [ofertaId], references: [id])
+
+  /// Quien registro la postulacion (comunero, directiva o empresa)
+  submittedById   String?
+  submittedBy     User?             @relation("PostulacionSubmittedBy", fields: [submittedById], references: [id])
   
   status          ApplicationStatus @default(PRESENTACION_CV)
-  timeline        Json              // Histórico de cambios de estado con fechas
-  aiMatchingScore Decimal?          @db.Decimal(5, 2) // Score de compatibilidad IA
+  /// TimelineEvent[] tipado (timeline.constants.ts)
+  timeline        Json
+  aiMatchingScore Decimal?          @db.Decimal(5, 2)
   
   contrato        Contrato?
+  comunicaciones  ComunicacionPostulacion[]
+  alertasDeadline AlertaDeadline[]
   
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -220,20 +277,35 @@ model Contrato {
   postulacion       Postulacion    @relation(fields: [postulacionId], references: [id])
   userId            String
   user              User           @relation(fields: [userId], references: [id])
-  
+
+  /// Matriz de contrato (alineada a oferta + datos del comunero)
+  numeroContrato    String?
+  companyName       String?        // Empresa contratante
+  puesto            String?        // Nombre del puesto
+  cargo             String?        // Cargo específico
+  area              String?
+  sector            String?        // Ubicación / sector geográfico
+  tipoManoObra      TipoManoObra?
   startDate         DateTime
   endDate           DateTime
   salary            Decimal        @db.Decimal(12, 2)
   regimenLaboral    String?        // Régimen laboral (ej: 728, 1057, etc.)
+  tiempoContratoMeses Int?
+  horarioTrabajo    String?
+  sistemaTrabajo    String?
+  observaciones     String?        @db.Text
   status            ContractStatus @default(ACTIVO)
   stabilityIndex    Decimal        @db.Decimal(5, 2) // Cálculo de estabilidad laboral
-  
+
   blockchainProof   String?        // Hash del contrato legal firmado
   evaluaciones      Evaluacion[]
-  
+
   createdAt         DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  deletedAt       DateTime?
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  @@index([companyName])
+  @@index([puesto])
 }
 
 model Capacitacion {
@@ -243,6 +315,11 @@ model Capacitacion {
   learningPath    Json      // Ruta sugerida de aprendizaje
   sector          String
   futureDemand    Boolean   @default(false) // Si es una habilidad demandada a futuro
+  /// CV_HISTORIAL = historial del comunero en el CV
+  /// PROGRAMA_ENTRENAMIENTO = cursos del programa Antamina / socio
+  tipo            TipoCapacitacion @default(CV_HISTORIAL)
+  /// Socio/empresa organizadora (relevante para programa de entrenamiento)
+  socioOrganizador String?
   
   usuarios        CapacitacionUsuario[]
   
@@ -264,6 +341,30 @@ model CapacitacionUsuario {
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, capacitacionId])
+}
+
+/// Encuesta / ficha del Programa de Entrenamiento Laboral (Antamina u otro socio)
+model EncuestaEntrenamientoLaboral {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id])
+
+  /// ¿Has sido capacitado por Antamina / programa de entrenamiento?
+  capacitadoPorAntamina  Boolean  @default(false)
+  anioParticipacion       Int?
+  socioOrganizador        String?  // Ej. Antamina, Ferreyros
+  nombrePrograma          String?
+  horas                   Int?
+  temas                   String?  @db.Text
+  obtuvoCertificado       Boolean  @default(false)
+  observaciones           String?  @db.Text
+  /// Respuestas adicionales de la encuesta
+  respuestas              Json?
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model Evaluacion {
@@ -274,8 +375,10 @@ model Evaluacion {
   evaluadoId        String
   evaluado          User      @relation("Evaluado", fields: [evaluadoId], references: [id])
   
-  satisfaccion      Int       @default(5) // Escala 1-5
+  satisfaccion      Int       @default(5) // Escala 1-5 (satisfacción general)
   discriminacion    Boolean   @default(false)
+  /// Respuestas completas del cuestionario 360° de satisfacción del trabajador
+  cuestionario      Json?
   feedbackTexto     String?   @db.Text
   grabacionUrl      String?   // Para video/audio
   sentimientoIA     Json?     // Resultado de análisis (score, emociones, etc.)
@@ -314,12 +417,41 @@ model Notificacion {
   usuarioId String
   user      User     @relation(fields: [usuarioId], references: [id])
   mensaje   String
-  tipo      String   // 'OFERTA', 'VENCIMIENTO', 'GENERAL'
+  tipo      String   // 'OFERTA', 'VENCIMIENTO', 'PROCESO', 'GENERAL'
   estado    String   @default("PENDIENTE") // PENDIENTE, ENVIADO, ERROR
   leido     Boolean  @default(false)
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Evidencia de comunicación en el proceso de convocatoria (chat por postulación)
+model ComunicacionPostulacion {
+  id             String             @id @default(uuid())
+  postulacionId  String
+  postulacion    Postulacion        @relation(fields: [postulacionId], references: [id])
+  remitenteId    String
+  remitente      User               @relation("ComunicacionRemitente", fields: [remitenteId], references: [id])
+  destinatarioId String
+  destinatario   User               @relation("ComunicacionDestinatario", fields: [destinatarioId], references: [id])
+  mensaje        String             @db.Text
+  estado         ComunicacionEstado @default(PENDIENTE)
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+/// Evita duplicar alertas de deadline (5 días antes)
+model AlertaDeadline {
+  id            String      @id @default(uuid())
+  postulacionId String
+  postulacion   Postulacion @relation(fields: [postulacionId], references: [id])
+  eventId       String
+  deadlineDate  DateTime
+  mensaje       String
+  sentAt        DateTime    @default(now())
+
+  @@unique([postulacionId, eventId])
 }
 
 model Acuerdo {
@@ -334,4 +466,23 @@ model Acuerdo {
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+/// Centro poblado / sector georreferenciado (Área de influencia Antamina / Ancash)
+model SectorGeografico {
+  id            String   @id @default(uuid())
+  codigo        String   @unique
+  nombre        String
+  /// Alias para emparejar textos libres de User.sector / Oferta.sector
+  aliases       String[] @default([])
+  latitud       Float
+  longitud      Float
+  departamento  String   @default("Ancash")
+  provincia     String?
+  distrito      String?
+  activo        Boolean  @default(true)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 }

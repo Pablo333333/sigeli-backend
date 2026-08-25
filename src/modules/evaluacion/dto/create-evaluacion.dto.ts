@@ -1,26 +1,85 @@
-import { IsString, IsInt, IsBoolean, IsOptional, IsUUID, Min, Max } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class CreateEvaluacionDto {
-  @IsUUID()
-  contractId: string;
+/**
+ * Cuestionario completo de satisfacción del trabajador (Evaluación 360°).
+ * Alineado con el formulario mobile / documento Ciro.
+ */
+export class CuestionarioSatisfaccionDto {
+  @IsBoolean()
+  contratoATiempo: boolean;
 
-  @IsUUID()
-  evaluatorId: string;
+  @IsBoolean()
+  deberesExplicados: boolean;
 
-  @IsUUID()
-  evaluadoId: string;
+  @IsBoolean()
+  derechosExplicados: boolean;
+
+  @IsBoolean()
+  pagoPuntual: boolean;
+
+  @IsBoolean()
+  capacitacionSeguridad: boolean;
+
+  @IsBoolean()
+  herramientasAdecuadas: boolean;
 
   @IsInt()
   @Min(1)
   @Max(5)
-  satisfaccion: number;
+  logisticaAlimentacion: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  logisticaTransporte: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  climaLaboral: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  tratoSupervisor: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  satisfaccionGeneral: number;
 
   @IsBoolean()
   discriminacion: boolean;
 
   @IsOptional()
   @IsString()
-  feedbackTexto?: string;
+  tipoDiscriminacion?: string;
+
+  @IsBoolean()
+  recomendariaEmpresa: boolean;
+
+  @IsOptional()
+  @IsString()
+  comentarios?: string;
+}
+
+export class CreateEvaluacionDto {
+  @IsUUID()
+  contractId: string;
+
+  @ValidateNested()
+  @Type(() => CuestionarioSatisfaccionDto)
+  cuestionario: CuestionarioSatisfaccionDto;
 
   @IsOptional()
   @IsString()

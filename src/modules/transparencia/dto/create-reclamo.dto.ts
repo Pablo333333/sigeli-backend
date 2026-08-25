@@ -5,8 +5,10 @@ export class CreateReclamoDto {
   @IsOptional()
   userId?: string;
 
+  /** Empresa/contratista involucrada. Si no se envía, se usa el tenant del usuario o la primera minera. */
   @IsUUID()
-  tenantId: string;
+  @IsOptional()
+  tenantId?: string;
 
   @IsString()
   @IsNotEmpty()

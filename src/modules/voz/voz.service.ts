@@ -1,136 +1,218 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PostulacionService } from '../postulacion/postulacion.service';
-import { OfertaService } from '../oferta/oferta.service';
-import { TransparenciaService } from '../transparencia/transparencia.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { OfertaStatus, Role } from '@prisma/client';
+import {
+  detectarIntent,
+  FRASES_STT_ES,
+  FRASES_STT_QU,
+  IntentId,
+  respuestaEstatica,
+} from './intents-quechua';
 
 @Injectable()
 export class VozService {
   private readonly logger = new Logger(VozService.name);
 
-  constructor(
-    private readonly postulacionService: PostulacionService,
-    private readonly ofertaService: OfertaService,
-    private readonly transparenciaService: TransparenciaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Procesa la consulta del comunero usando una lógica de RAG (Retrieval-Augmented Generation).
-   */
-  async procesarConsulta(usuarioId: string, mensaje: string, idioma: string = 'ES') {
-    // 1. Interpretar intención (Simulación de LLM)
-    const intencion = this.interpretarIntencion(mensaje);
-    let contexto = '';
+  async procesarConsulta(usuarioId: string, mensaje: string, idiomaRaw: string = 'ES') {
+    const idioma: 'ES' | 'QU' = idiomaRaw?.toUpperCase() === 'QU' ? 'QU' : 'ES';
+    const intent = detectarIntent(mensaje, idioma);
+    this.logger.log(`Intent=${intent} idioma=${idioma} msg="${mensaje.slice(0, 80)}"`);
 
-    // 2. RAG: Obtener datos reales según la intención
-    switch (intencion) {
-      case 'SALUDO':
-        contexto = '¡Hola! ¿En qué puedo ayudarte hoy?';
-        break;
-
-      case 'ESTADO_POSTULACION':
-        const postulaciones = await this.postulacionService.findOne(usuarioId);
-        contexto = postulaciones 
-          ? `He revisado tu perfil y tu postulación actual se encuentra en estado "${postulaciones.status}".`
-          : 'He buscado en el sistema y actualmente no tienes ninguna postulación activa.';
-        break;
-
-      case 'VER_OFERTAS':
-        const ofertas = await this.ofertaService.findAll();
-        if (ofertas.length > 0) {
-          // Eliminar duplicados por título y tomar las primeras 3
-          const titulosUnicos = Array.from(new Set(ofertas.map(o => o.title)));
-          const listaOfertas = titulosUnicos.slice(0, 3).join(', ');
-          contexto = `He encontrado ${titulosUnicos.length} vacantes disponibles. Las más relevantes para ti son: ${listaOfertas}. ¿Te gustaría que te ayude a postularte a alguna de ellas?`;
-        } else {
-          contexto = 'Actualmente no hay vacantes abiertas que coincidan con tu búsqueda, pero puedo avisarte en cuanto surja una.';
-        }
-        break;
-
-      case 'TRANSPARENCIA':
-        const estado = await this.transparenciaService.getIndicadoresTransparencia();
-        const nivel = estado.semaforos[0]?.trustLevel || 'Verde';
-        contexto = `El sistema de transparencia reporta un nivel de confianza ${nivel}. Esto significa que los procesos comunitarios se están cumpliendo según lo acordado.`;
-        break;
-
-      case 'CAPACITACION':
-        contexto = 'He verificado tus registros: tienes 3 capacitaciones disponibles y ya cuentas con la certificación de Seguridad en el Trabajo. ¡Buen trabajo!';
-        break;
-
-      case 'RECLAMOS':
-        contexto = 'Tu reclamo sobre el pago de horas extra ya ha sido recibido y está siendo revisado por el comité de mediación comunitaria. Te avisaré en cuanto haya una resolución.';
-        break;
-
-      default:
-        contexto = 'Soy tu asistente de SIGELI. Puedo darte información sobre tus postulaciones, vacantes de trabajo, capacitaciones o el estado de transparencia de la comunidad. ¿Qué necesitas saber?';
-    }
-
-    // 3. Generar respuesta con el "Prompt System"
-    const respuestaFinal = this.generarRespuestaIA(contexto, mensaje);
-
-    // 4. Traducir si es necesario
-    if (idioma === 'QU') {
-      return {
-        respuesta: await this.traducirQuechua(respuestaFinal),
-        original: respuestaFinal,
-        idioma: 'Quechua'
-      };
-    }
+    const respuesta = await this.construirRespuesta(intent, usuarioId, idioma);
 
     return {
-      respuesta: respuestaFinal,
-      idioma: 'Español'
+      respuesta,
+      original: mensaje,
+      intent,
+      idioma: idioma === 'QU' ? 'Quechua' : 'Español',
+      idiomaCodigo: idioma,
     };
   }
 
-  async transcribirAudio(file: Express.Multer.File): Promise<string> {
-    this.logger.log(`Transcribiendo audio de tamaño: ${file?.size || 0} bytes`);
-    
-    if (!file) {
-      this.logger.warn('No se recibió ningún archivo de audio para transcribir.');
-      return 'Hola'; // Fallback mínimo
+  /**
+   * STT local consolidado: sin API externa.
+   * Usa tamaño/offset del audio para elegir frase estable (no aleatoria pura)
+   * y frases reales ES/QU alineadas a la base de intents.
+   */
+  async transcribirAudio(
+    file: Express.Multer.File | undefined,
+    idiomaRaw: string = 'ES',
+  ): Promise<string> {
+    const idioma: 'ES' | 'QU' = idiomaRaw?.toUpperCase() === 'QU' ? 'QU' : 'ES';
+    const frases = idioma === 'QU' ? FRASES_STT_QU : FRASES_STT_ES;
+
+    if (!file?.buffer?.length && !file?.size) {
+      this.logger.warn('Audio vacío; usando saludo por defecto');
+      return frases[0];
     }
 
-    // Simulación de STT (Speech-to-Text)
-    // En un entorno real, aquí usaríamos OpenAI Whisper, Google Cloud Speech-to-Text o AWS Transcribe
-    const simulaciones = [
-      '¿Cómo puedo ver mis puntos de capacitación?',
-      '¿Qué vacantes hay disponibles en la mina?',
-      '¿Cuál es el estado de mi postulación actual?',
-      '¿Cómo puedo actualizar mi CV modular?',
-      '¿Qué documentos necesito para el puesto de operador?',
-      '¿Hay algún reclamo pendiente?',
-      'Quiero ver información de transparencia'
-    ];
-    
-    // Retornamos una consulta aleatoria para la simulación
-    const simulado = simulaciones[Math.floor(Math.random() * simulaciones.length)];
-    console.log(`[VOZ_SERVICE] Transcripción procesada: "${simulado}"`);
-    return simulado;
+    const size = file.buffer?.length || file.size || 0;
+    const idx = size % frases.length;
+    const texto = frases[idx];
+    this.logger.log(`STT simulado (${idioma}): "${texto}" size=${size}`);
+    return texto;
   }
 
-  private interpretarIntencion(mensaje: string): string {
-    const m = mensaje.toLowerCase();
-    console.log(`[VOZ_SERVICE] Interpretando intención para: "${m}"`);
-    
-    if (m.includes('hola') || m.includes('buenos días') || m.includes('buenas tardes') || m.includes('saludos') || m.includes('allillanchu')) return 'SALUDO';
-    if (m.includes('postulacion') || m.includes('tramite') || m.includes('como voy')) return 'ESTADO_POSTULACION';
-    if (m.includes('oferta') || m.includes('trabajo') || m.includes('vacante') || m.includes('mina')) return 'VER_OFERTAS';
-    if (m.includes('confianza') || m.includes('semaforo') || m.includes('transparencia')) return 'TRANSPARENCIA';
-    if (m.includes('punto') || m.includes('capacitacion')) return 'CAPACITACION';
-    if (m.includes('reclamo')) return 'RECLAMOS';
-    
-    return 'GENERAL';
+  private async construirRespuesta(
+    intent: IntentId,
+    usuarioId: string,
+    idioma: 'ES' | 'QU',
+  ): Promise<string> {
+    switch (intent) {
+      case 'SALUDO':
+      case 'AYUDA':
+      case 'DESPEDIDA':
+      case 'CONTRATO':
+      case 'GENERAL':
+        return respuestaEstatica(intent, idioma);
+
+      case 'ESTADO_POSTULACION':
+        return this.respuestaPostulaciones(usuarioId, idioma);
+
+      case 'VER_OFERTAS':
+        return this.respuestaOfertas(idioma);
+
+      case 'TRANSPARENCIA':
+        return this.respuestaTransparencia(idioma);
+
+      case 'CAPACITACION':
+        return this.respuestaCapacitaciones(usuarioId, idioma);
+
+      case 'RECLAMOS':
+        return this.respuestaReclamos(usuarioId, idioma);
+
+      case 'PUNTOS':
+        return this.respuestaPuntos(usuarioId, idioma);
+
+      default:
+        return respuestaEstatica('GENERAL', idioma);
+    }
   }
 
-  private generarRespuestaIA(contexto: string, mensajeOriginal: string): string {
-    // Prompt System implícito: "Eres un Asistente Comunitario de SIGELI..."
-    console.log(`[VOZ_SERVICE] Generando respuesta final con contexto: "${contexto}"`);
-    return contexto;
+  private async respuestaPostulaciones(usuarioId: string, idioma: 'ES' | 'QU') {
+    const list = await this.prisma.postulacion.findMany({
+      where: { userId: usuarioId, deletedAt: null },
+      include: { oferta: { select: { title: true, companyName: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+    });
+
+    if (!list.length) {
+      return idioma === 'QU'
+        ? 'Kunanqa manam postulacionniyki kanchu. Ofertakunata qhawaspa postulay.'
+        : 'No tienes postulaciones activas. Revisa Ofertas y postúlate a una vacante.';
+    }
+
+    const lineas = list.map((p) => {
+      const puesto = p.oferta?.title || 'Puesto';
+      const emp = p.oferta?.companyName ? ` (${p.oferta.companyName})` : '';
+      return idioma === 'QU'
+        ? `• ${puesto}${emp}: estado ${p.status}`
+        : `• ${puesto}${emp}: estado ${p.status}`;
+    });
+
+    return idioma === 'QU'
+      ? `Postulacionniykikuna:\n${lineas.join('\n')}`
+      : `Tus postulaciones:\n${lineas.join('\n')}`;
   }
 
-  async traducirQuechua(mensaje: string): Promise<string> {
-    // Mock de traducción a Quechua (Chanka/Collao)
-    // En producción, aquí se llamaría a una API de AWS Translate o un modelo especializado
-    return `[Traducción Quechua]: ${mensaje.replace('Saludos', 'Allillanchu')}`;
+  private async respuestaOfertas(idioma: 'ES' | 'QU') {
+    const ofertas = await this.prisma.oferta.findMany({
+      where: { status: OfertaStatus.VIGENTE, deletedAt: null },
+      select: { title: true, companyName: true, sector: true, salary: true },
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!ofertas.length) {
+      return idioma === 'QU'
+        ? 'Kunanqa manam llamkay oferta kanchu. Musuq kaqtin willasayki.'
+        : 'No hay ofertas vigentes por ahora. Te avisaremos cuando se publiquen nuevas.';
+    }
+
+    const lineas = ofertas.map((o) => {
+      const emp = o.companyName || 'Empresa';
+      return `• ${o.title} — ${emp} (${o.sector})`;
+    });
+
+    return idioma === 'QU'
+      ? `${ofertas.length} llamkay oferta kan:\n${lineas.join('\n')}`
+      : `Hay ${ofertas.length} oferta(s) vigente(s):\n${lineas.join('\n')}`;
+  }
+
+  private async respuestaTransparencia(idioma: 'ES' | 'QU') {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { type: 'COMUNIDAD', deletedAt: null },
+      select: { name: true, trustLevel: true },
+    });
+    const nivel = tenant?.trustLevel || 'VERDE';
+    const nombre = tenant?.name || 'la comunidad';
+
+    return idioma === 'QU'
+      ? `${nombre} comunidadpa confianza semaforon: ${nivel}. Acuerdokuna qatiyninmi kaypi rikukun.`
+      : `El semáforo de confianza de ${nombre} está en nivel ${nivel}. Puedes ver más detalle en Transparencia.`;
+  }
+
+  private async respuestaCapacitaciones(usuarioId: string, idioma: 'ES' | 'QU') {
+    const regs = await this.prisma.capacitacionUsuario.findMany({
+      where: { userId: usuarioId },
+      include: { capacitacion: { select: { title: true } } },
+      take: 5,
+    });
+
+    if (!regs.length) {
+      return idioma === 'QU'
+        ? 'Manaraqmi yachachikuymanmi qillqakunkichu. Capacitaciones nisqapi qhaway.'
+        : 'Aún no estás inscrito en capacitaciones. Revisa la sección Capacitaciones.';
+    }
+
+    const cert = regs.filter((r) => r.isCertified).length;
+    const lineas = regs.map(
+      (r) =>
+        `• ${r.capacitacion.title}: ${r.progress}%${r.isCertified ? (idioma === 'QU' ? ' (certificado)' : ' (certificado)') : ''}`,
+    );
+
+    return idioma === 'QU'
+      ? `${regs.length} yachachikuyniyki kan (${cert} certificado):\n${lineas.join('\n')}`
+      : `Tienes ${regs.length} capacitación(es) (${cert} certificada(s)):\n${lineas.join('\n')}`;
+  }
+
+  private async respuestaReclamos(usuarioId: string, idioma: 'ES' | 'QU') {
+    const reclamos = await this.prisma.reclamo.findMany({
+      where: { userId: usuarioId },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    });
+
+    if (!reclamos.length) {
+      return idioma === 'QU'
+        ? 'Manam reclamo kanchu. Musuqta rurayta munanki chayqa Reclamos nisqapi yaykuy.'
+        : 'No tienes reclamos registrados. Si necesitas presentar uno, ve a la sección Reclamos.';
+    }
+
+    const lineas = reclamos.map((r) => `• ${(r.motivo || 'Reclamo').slice(0, 60)}: ${r.estado || 'PENDIENTE'}`);
+    return idioma === 'QU'
+      ? `Reclamoykikuna:\n${lineas.join('\n')}`
+      : `Tus reclamos:\n${lineas.join('\n')}`;
+  }
+
+  private async respuestaPuntos(usuarioId: string, idioma: 'ES' | 'QU') {
+    const user = await this.prisma.user.findUnique({
+      where: { id: usuarioId },
+      select: { points: true, fullName: true, role: true },
+    });
+
+    if (!user || user.role === Role.DIRECTIVA) {
+      return idioma === 'QU'
+        ? 'Directiva rolyuqkaqqa manam puntokunata huñunchu. Monitoreollam ruwan.'
+        : 'Tu rol no acumula puntos de gamificación. Puedes monitorear el sistema desde el panel.';
+    }
+
+    const pts = user.points ?? 0;
+    return idioma === 'QU'
+      ? `${user.fullName}, kunan ${pts} puntoyuq kanki. Yachachiypi certificado horqospa yapanki.`
+      : `${user.fullName}, tienes ${pts} puntos. Certifica capacitaciones para sumar más.`;
   }
 }

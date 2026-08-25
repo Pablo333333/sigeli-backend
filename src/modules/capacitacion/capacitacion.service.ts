@@ -1,17 +1,14 @@
 import { Injectable, NotFoundException, InternalServerErrorException, UseInterceptors } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CreateCapacitacionDto } from './dto/create-capacitacion.dto';
+import { CreateCapacitacionDto, UpsertEncuestaEntrenamientoDto } from './dto/create-capacitacion.dto';
 import { AuditInterceptor } from '../../common/interceptors/audit.interceptor';
-import { Prisma } from '@prisma/client';
+import { Prisma, TipoCapacitacion } from '@prisma/client';
 
 @Injectable()
 @UseInterceptors(AuditInterceptor)
 export class CapacitacionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Registra un nuevo programa de capacitación.
-   */
   async createPrograma(dto: CreateCapacitacionDto) {
     try {
       return await this.prisma.capacitacion.create({
@@ -19,7 +16,9 @@ export class CapacitacionService {
           title: dto.title,
           description: dto.description,
           sector: dto.sector,
-          learningPath: dto.learningPath as Prisma.JsonObject || {},
+          learningPath: (dto.learningPath as Prisma.JsonObject) || {},
+          tipo: dto.tipo || TipoCapacitacion.CV_HISTORIAL,
+          socioOrganizador: dto.socioOrganizador || null,
         },
       });
     } catch (error) {
@@ -27,13 +26,14 @@ export class CapacitacionService {
     }
   }
 
-  /**
-   * Vincula a un comunero con un programa de capacitación.
-   */
   async vincularTalento(userId: string, capacitacionId: string) {
     try {
-      return await this.prisma.capacitacionUsuario.create({
-        data: {
+      return await this.prisma.capacitacionUsuario.upsert({
+        where: {
+          userId_capacitacionId: { userId, capacitacionId },
+        },
+        update: {},
+        create: {
           userId,
           capacitacionId,
           progress: 0,
@@ -45,9 +45,6 @@ export class CapacitacionService {
     }
   }
 
-  /**
-   * Actualiza el avance de un usuario y certifica si llega al 100%.
-   */
   async registrarAvance(userId: string, capacitacionId: string, progress: number) {
     try {
       const registro = await this.prisma.capacitacionUsuario.findFirst({
@@ -71,7 +68,6 @@ export class CapacitacionService {
         },
       });
 
-      // Si se certifica, actualizamos automáticamente las habilidades en el CV y otorgamos puntos
       if (isCertified) {
         await Promise.all([
           this.actualizarHabilidadesCV(userId, updated.capacitacion.title),
@@ -86,59 +82,46 @@ export class CapacitacionService {
     }
   }
 
-  /**
-   * Otorga puntos al usuario como parte del sistema de gamificación.
-   */
-  private async otorgarPuntos(userId: string, puntos: number, motivo: string) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { points: { increment: puntos } },
-    });
-    console.log(`[GAMIFICACIÓN] Usuario ${userId} ganó ${puntos} puntos por: ${motivo}`);
-  }
-
-  /**
-   * Obtiene la ruta de aprendizaje (programas vinculados) de un comunero.
-   */
-  async getRutaAprendizaje(userId: string) {
+  async getRutaAprendizaje(userId: string, tipo?: TipoCapacitacion) {
     return this.prisma.capacitacionUsuario.findMany({
-      where: { userId },
-      include: {
-        capacitacion: true,
+      where: {
+        userId,
+        ...(tipo
+          ? { capacitacion: { tipo, deletedAt: null } }
+          : { capacitacion: { deletedAt: null } }),
       },
+      include: { capacitacion: true },
+      orderBy: { updatedAt: 'desc' },
     });
   }
 
-  /**
-   * Lógica interna para añadir la habilidad al CV tras la certificación.
-   */
   private async actualizarHabilidadesCV(userId: string, skillName: string) {
-    const cv = await this.prisma.cV.findUnique({
-      where: { userId },
-    });
-
+    const cv = await this.prisma.cV.findUnique({ where: { userId } });
     if (cv) {
       await this.prisma.habilidad.create({
-        data: {
-          cvId: cv.id,
-          name: skillName,
-          isVerified: true, // Certificación dual automática
-        },
+        data: { cvId: cv.id, name: skillName, isVerified: true },
       });
     }
   }
 
-  async findAll() {
-    return this.prisma.capacitacion.findMany({
-      include: {
-        usuarios: true,
-      },
+  private async otorgarPuntos(userId: string, puntos: number, _motivo: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { points: { increment: puntos } },
     });
   }
 
-  /**
-   * Calcula métricas predictivas para la IA de Trayectoria.
-   */
+  async findAll(tipo?: TipoCapacitacion) {
+    return this.prisma.capacitacion.findMany({
+      where: {
+        deletedAt: null,
+        ...(tipo ? { tipo } : {}),
+      },
+      include: { usuarios: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getMetricasIA() {
     const [totalComuneros, comunerosEnProgreso] = await Promise.all([
       this.prisma.user.count({ where: { role: 'COMUNERO', deletedAt: null } }),
@@ -147,18 +130,14 @@ export class CapacitacionService {
           role: 'COMUNERO',
           deletedAt: null,
           capacitaciones: {
-            some: {
-              progress: { gt: 0 },
-              isCertified: false,
-            },
+            some: { progress: { gt: 0 }, isCertified: false },
           },
         },
       }),
     ]);
 
-    const porcentajeAscenso = totalComuneros > 0 
-      ? Math.round((comunerosEnProgreso / totalComuneros) * 100) 
-      : 0;
+    const porcentajeAscenso =
+      totalComuneros > 0 ? Math.round((comunerosEnProgreso / totalComuneros) * 100) : 0;
 
     return {
       porcentajeAscenso,
@@ -166,5 +145,68 @@ export class CapacitacionService {
       comunerosEnProgreso,
       timestamp: new Date(),
     };
+  }
+
+  /** Encuesta del programa de entrenamiento laboral (1 por comunero) */
+  async getEncuesta(userId: string) {
+    return this.prisma.encuestaEntrenamientoLaboral.findUnique({
+      where: { userId },
+    });
+  }
+
+  async upsertEncuesta(userId: string, dto: UpsertEncuestaEntrenamientoDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.deletedAt) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const data = {
+      capacitadoPorAntamina: dto.capacitadoPorAntamina,
+      anioParticipacion: dto.capacitadoPorAntamina ? dto.anioParticipacion ?? null : null,
+      socioOrganizador: dto.capacitadoPorAntamina ? dto.socioOrganizador ?? null : null,
+      nombrePrograma: dto.capacitadoPorAntamina ? dto.nombrePrograma ?? null : null,
+      horas: dto.capacitadoPorAntamina ? dto.horas ?? null : null,
+      temas: dto.capacitadoPorAntamina ? dto.temas ?? null : null,
+      obtuvoCertificado: dto.capacitadoPorAntamina ? !!dto.obtuvoCertificado : false,
+      observaciones: dto.observaciones ?? null,
+      respuestas: (dto.respuestas as Prisma.JsonObject) || undefined,
+    };
+
+    return this.prisma.encuestaEntrenamientoLaboral.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, ...data },
+    });
+  }
+
+  /**
+   * Participantes del programa de entrenamiento (para dashboard):
+   * encuesta SI + inscritos en cursos tipo PROGRAMA_ENTRENAMIENTO (unión).
+   */
+  async countParticipantesEntrenamiento(comuneroUserIds?: string[]) {
+    const encuestaWhere: Prisma.EncuestaEntrenamientoLaboralWhereInput = {
+      capacitadoPorAntamina: true,
+      ...(comuneroUserIds ? { userId: { in: comuneroUserIds } } : {}),
+    };
+
+    const [fromEncuesta, fromCursos] = await Promise.all([
+      this.prisma.encuestaEntrenamientoLaboral.findMany({
+        where: encuestaWhere,
+        select: { userId: true },
+      }),
+      this.prisma.capacitacionUsuario.findMany({
+        where: {
+          capacitacion: { tipo: TipoCapacitacion.PROGRAMA_ENTRENAMIENTO, deletedAt: null },
+          ...(comuneroUserIds ? { userId: { in: comuneroUserIds } } : {}),
+        },
+        select: { userId: true },
+        distinct: ['userId'],
+      }),
+    ]);
+
+    const set = new Set<string>();
+    fromEncuesta.forEach((e) => set.add(e.userId));
+    fromCursos.forEach((e) => set.add(e.userId));
+    return set.size;
   }
 }

@@ -1,5 +1,6 @@
 import { Controller, Post, Body, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { VozService } from './voz.service';
 import { ConsultaVozDto } from './dto/consulta-voz.dto';
 
@@ -13,28 +14,29 @@ export class VozController {
   }
 
   @Post('transcribir')
-  @UseInterceptors(FileInterceptor('audio'))
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
   async transcribir(
     @UploadedFile() file: Express.Multer.File,
     @Body('usuarioId') usuarioId: string,
     @Body('idioma') idioma: string,
   ) {
-    console.log('[VOZ_CONTROLLER] Petición de transcripción recibida');
-    console.log('[VOZ_CONTROLLER] Archivo:', file ? {
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size
-    } : 'NINGUNO');
-    console.log('[VOZ_CONTROLLER] Datos:', { usuarioId, idioma });
+    const mensajeTranscrito = await this.vozService.transcribirAudio(file, idioma);
+    const respuesta = await this.vozService.procesarConsulta(
+      usuarioId,
+      mensajeTranscrito,
+      idioma,
+    );
 
-    // 1. Transcribir audio a texto (Simulado)
-    const mensajeTranscrito = await this.vozService.transcribirAudio(file);
-    console.log('[VOZ_CONTROLLER] Mensaje transcrito:', mensajeTranscrito);
-    
-    // 2. Procesar consulta con el texto obtenido
-    const respuesta = await this.vozService.procesarConsulta(usuarioId, mensajeTranscrito, idioma);
-    console.log('[VOZ_CONTROLLER] Respuesta generada:', respuesta);
-    
-    return respuesta;
+    return {
+      ...respuesta,
+      /** Texto reconocido (STT) para mostrar en el chat del usuario */
+      original: mensajeTranscrito,
+      transcripcion: mensajeTranscrito,
+    };
   }
 }

@@ -1,12 +1,10 @@
 import { Module } from '@nestjs/common';
 import { VozService } from './voz.service';
 import { VozController } from './voz.controller';
-import { PostulacionModule } from '../postulacion/postulacion.module';
-import { OfertaModule } from '../oferta/oferta.module';
-import { TransparenciaModule } from '../transparencia/transparencia.module';
+import { PrismaModule } from '../../common/prisma/prisma.module';
 
 @Module({
-  imports: [PostulacionModule, OfertaModule, TransparenciaModule],
+  imports: [PrismaModule],
   controllers: [VozController],
   providers: [VozService],
 })

@@ -17,28 +17,48 @@ export class AuditInterceptor implements NestInterceptor {
     const { method, url, body, user } = request;
 
     return next.handle().pipe(
-      tap(async (data) => {
-        // Solo auditamos mutaciones exitosas
+      tap((data) => {
         if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
-          await this.logAction(url, data?.id || body?.id, method, data, user?.id, 'SUCCESS');
+          // fire-and-forget; no async en el operador (evita tragar errores)
+          this.logAction(
+            url,
+            data?.id || body?.id,
+            method,
+            data,
+            user?.userId || user?.id,
+            'SUCCESS',
+          ).catch(() => undefined);
         }
       }),
-      catchError(async (error) => {
-        // Auditamos intentos fallidos en mutaciones
+      catchError((error) => {
         if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
-          await this.logAction(url, body?.id || 'N/A', method, { error: error.message }, user?.id, 'FAILED');
+          this.logAction(
+            url,
+            body?.id || 'N/A',
+            method,
+            { error: error?.message },
+            user?.userId || user?.id,
+            'FAILED',
+          ).catch(() => undefined);
         }
         return throwError(() => error);
-      })
+      }),
     );
   }
 
-  private async logAction(url: string, entityId: string, action: string, data: any, userId: string, status: string) {
+  private async logAction(
+    url: string,
+    entityId: string,
+    action: string,
+    data: any,
+    userId: string,
+    status: string,
+  ) {
     try {
       await this.prisma.auditLog.create({
         data: {
           entityName: url.split('/')[1] || 'unknown',
-          entityId: entityId || 'N/A',
+          entityId: String(entityId || 'N/A'),
           action: `${action}_${status}`,
           oldData: null,
           newData: data || {},

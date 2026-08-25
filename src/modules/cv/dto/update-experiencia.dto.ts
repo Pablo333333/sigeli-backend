@@ -4,7 +4,7 @@ import { ExperienciaCategoria } from '@prisma/client';
 export class UpdateExperienciaDto {
   @IsUUID()
   @IsOptional()
-  id?: string; // Si viene ID es update, si no es create
+  id?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -13,6 +13,14 @@ export class UpdateExperienciaDto {
   @IsString()
   @IsNotEmpty()
   position: string;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  logros?: string;
 
   @IsEnum(ExperienciaCategoria)
   categoria: ExperienciaCategoria;

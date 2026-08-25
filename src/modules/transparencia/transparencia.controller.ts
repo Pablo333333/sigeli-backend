@@ -1,12 +1,14 @@
-import { Controller, Post, Patch, Get, Body, Param, ParseUUIDPipe, UseInterceptors, UseGuards, Query, Request } from '@nestjs/common';
+import { Controller, Post, Patch, Get, Body, Param, ParseUUIDPipe, UseInterceptors, UseGuards, Request } from '@nestjs/common';
 import { TransparenciaService } from './transparencia.service';
 import { CreateReclamoDto } from './dto/create-reclamo.dto';
-import { UpdateSemaforoDto } from './dto/update-semaforo.dto';
 import { AuditInterceptor } from '../../common/interceptors/audit.interceptor';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { TrustLevel } from '@prisma/client';
+import { RolePermissions } from '../../common/permissions/role-permissions';
 
 @Controller('transparencia')
 @UseInterceptors(AuditInterceptor)
@@ -16,7 +18,8 @@ export class TransparenciaController {
     private readonly prisma: PrismaService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...RolePermissions.reclamoWrite)
   @Post('reclamos')
   async registrarReclamo(
     @Body() createReclamoDto: Omit<CreateReclamoDto, 'userId'>,
@@ -36,8 +39,9 @@ export class TransparenciaController {
     });
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...RolePermissions.dashboard)
   @Patch('semaforo/:tenantId')
-  @UseGuards(JwtAuthGuard)
   async actualizarSemaforo(
     @Param('tenantId') tenantId: string,
     @Body() dto: { nivel: TrustLevel; justificacion: string },
@@ -47,11 +51,15 @@ export class TransparenciaController {
     return this.transparenciaService.actualizarSemaforo(tenantId, dto.nivel, dto.justificacion, userId);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...RolePermissions.dashboard)
   @Get('reclamos')
   async getReclamos() {
     return this.transparenciaService.getReclamos();
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...RolePermissions.dashboard)
   @Patch('reclamos/:id/estado')
   async resolverReclamo(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -61,6 +69,8 @@ export class TransparenciaController {
     return this.transparenciaService.actualizarEstadoReclamo(id, estado, respuestaOficial);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...RolePermissions.dashboard)
   @Get('estado')
   async getEstado() {
     return this.transparenciaService.getIndicadoresTransparencia();
