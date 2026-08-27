@@ -144,7 +144,7 @@ export class CVService {
           });
         }
 
-        const defaultEmail = `${normalizedDni}@sigeli.com`;
+        const defaultEmail = `${normalizedDni}@talento.local`;
         const emailClash = await this.prisma.user.findFirst({
           where: { email: defaultEmail, deletedAt: null },
         });
@@ -228,7 +228,7 @@ export class CVService {
           multimediaUrls.dniBack = result.secure_url;
         }
         if (files.presentationVideo?.[0]) {
-          const result = await this.cloudinaryService.uploadFile(files.presentationVideo[0], 'sigeli/cv/videos');
+          const result = await this.cloudinaryService.uploadFile(files.presentationVideo[0], 'talento/cv/videos');
           multimediaUrls.presentationVideo = result.secure_url;
         }
       }

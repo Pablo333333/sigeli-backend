@@ -1,5 +1,5 @@
 /**
- * Base de intents bilingüe (Español / Quechua Ancashino-Collao) para el asistente SIGELI.
+ * Base de intents bilingüe (Español / Quechua Ancashino-Collao) para el asistente Talento.
  * Respuestas plantilla; el servicio completa con datos reales cuando aplica.
  */
 
@@ -30,8 +30,8 @@ export const INTENTS: IntentDef[] = [
     id: 'SALUDO',
     keywordsES: ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'saludos', 'buen dia'],
     keywordsQU: ['allillanchu', 'rimaykullayki', 'imaynalla', 'napaykuy'],
-    respuestaES: '¡Hola! Soy el asistente de SIGELI. Puedo ayudarte con postulaciones, ofertas, capacitaciones, transparencia y reclamos.',
-    respuestaQU: 'Allillanchu. Ñuqaqa SIGELI yanapaqniyki kani. Postulacionkuna, llamkaykuna, yachachiykuna, transparencia hinaspa reclamokunamanta willaykusqayki.',
+    respuestaES: '¡Hola! Soy el asistente de Talento. Puedo ayudarte con postulaciones, ofertas, capacitaciones, transparencia y reclamos.',
+    respuestaQU: 'Allillanchu. Ñuqaqa Talento yanapaqniyki kani. Postulacionkuna, llamkaykuna, yachachiykuna, transparencia hinaspa reclamokunamanta willaykusqayki.',
   },
   {
     id: 'ESTADO_POSTULACION',
@@ -100,8 +100,8 @@ export const INTENTS: IntentDef[] = [
     id: 'PUNTOS',
     keywordsES: ['punto', 'puntos', 'gamificacion', 'gamificación', 'premio'],
     keywordsQU: ['punto', 'puntos', 'premio'],
-    respuestaES: 'Tus puntos se acumulan al certificar capacitaciones y completar actividades en SIGELI.',
-    respuestaQU: 'Yachachiypi certificado horqoptikiqa puntokuna yapakun SIGELIpi.',
+    respuestaES: 'Tus puntos se acumulan al certificar capacitaciones y completar actividades en Talento.',
+    respuestaQU: 'Yachachiypi certificado horqoptikiqa puntokuna yapakun Talentopi.',
   },
   {
     id: 'AYUDA',
@@ -124,9 +124,9 @@ export const INTENTS: IntentDef[] = [
     keywordsES: [],
     keywordsQU: [],
     respuestaES:
-      'Soy el asistente de SIGELI. Pregúntame por tus postulaciones, ofertas, capacitaciones, transparencia o reclamos. También puedes cambiar a Quechua arriba.',
+      'Soy el asistente de Talento. Pregúntame por tus postulaciones, ofertas, capacitaciones, transparencia o reclamos. También puedes cambiar a Quechua arriba.',
     respuestaQU:
-      'Ñuqaqa SIGELI yanapaqniyki kani. Postulacion, llamkay, yachachiy, transparencia utaq reclamomanta tapuway. Hanaypi Quechuaman tikrayta atinki.',
+      'Ñuqaqa Talento yanapaqniyki kani. Postulacion, llamkay, yachachiy, transparencia utaq reclamomanta tapuway. Hanaypi Quechuaman tikrayta atinki.',
   },
 ];
 

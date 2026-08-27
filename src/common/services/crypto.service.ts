@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class CryptoService {
   private readonly algorithm = 'aes-256-gcm';
-  private readonly key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'default-secret-key-sigeli-2026', 'salt', 32);
+  private readonly key = crypto.scryptSync(process.env.CRYPTO_SECRET || 'default-secret-key-talento-2026', 'salt', 32);
   private readonly ivLength = 16;
   private readonly tagLength = 16;
 

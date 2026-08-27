@@ -1,7 +1,7 @@
 import { ApplicationStatus } from '@prisma/client';
 
 /**
- * Pipeline Antamina / SIGELI (Fase 3)
+ * Pipeline Antamina / Talento (Fase 3)
  * PRESENTACION_CV → SEGURIDAD → EVALUACION → ENTREVISTA → MEDICO → INDUCCION → CONTRATADO
  * RECHAZADO es terminal desde cualquier etapa previa.
  */

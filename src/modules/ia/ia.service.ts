@@ -7,7 +7,7 @@ export class IAService {
     const plantillas = [
       `Profesional altamente calificado en el sector de ${especialidad}, con una sólida trayectoria de ${experiencia} años respaldada por la comunidad. Especializado en procesos críticos y mantenimiento, con un perfil óptimo verificado para el desarrollo local.`,
       `Experto en ${especialidad} con ${experiencia} años de experiencia comprobada. Destaca por su compromiso con la excelencia operativa y la seguridad. Perfil integral con capacidades técnicas avanzadas para proyectos de gran envergadura.`,
-      `Especialista en ${especialidad} con una carrera de ${experiencia} años. Posee un historial destacado de eficiencia y adaptabilidad en entornos exigentes. Su perfil representa el talento local de alta competencia que SIGELI promueve.`
+      `Especialista en ${especialidad} con una carrera de ${experiencia} años. Posee un historial destacado de eficiencia y adaptabilidad en entornos exigentes. Su perfil representa el talento local de alta competencia que Talento promueve.`
     ];
 
     // Seleccionar una plantilla al azar para que no sea siempre igual

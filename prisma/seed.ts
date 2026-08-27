@@ -27,7 +27,7 @@ async function main() {
     create: {
       email: 'test@admin.com',
       password: password,
-      fullName: 'Administrador SIGELI',
+      fullName: 'Administrador Talento',
       dni: '12345678',
       role: Role.ADMIN,
       tenantId: tenant.id,
@@ -136,10 +136,10 @@ async function main() {
   }
 
   // Comunero de prueba (mismo password documentado para QA / cliente)
-  // Email: comunero.test@sigeli.com | Password: Password123! | DNI: 00000000
+  // Email: comunero.test@talento.local | Password: Password123! | DNI: 00000000
   const testPassword = await bcrypt.hash('Password123!', 10);
   await prisma.user.upsert({
-    where: { email: 'comunero.test@sigeli.com' },
+    where: { email: 'comunero.test@talento.local' },
     update: {
       password: testPassword,
       role: Role.COMUNERO,
@@ -150,7 +150,7 @@ async function main() {
       deletedAt: null,
     },
     create: {
-      email: 'comunero.test@sigeli.com',
+      email: 'comunero.test@talento.local',
       password: testPassword,
       fullName: 'Comunero de Prueba',
       dni: '00000000',
@@ -162,9 +162,9 @@ async function main() {
   });
 
   // Directiva Comunal de prueba
-  // Email: directiva.test@sigeli.com | Password: Password123! | DNI: 11111111
+  // Email: directiva.test@talento.local | Password: Password123! | DNI: 11111111
   await prisma.user.upsert({
-    where: { email: 'directiva.test@sigeli.com' },
+    where: { email: 'directiva.test@talento.local' },
     update: {
       password: testPassword,
       role: Role.DIRECTIVA,
@@ -174,7 +174,7 @@ async function main() {
       deletedAt: null,
     },
     create: {
-      email: 'directiva.test@sigeli.com',
+      email: 'directiva.test@talento.local',
       password: testPassword,
       fullName: 'Directiva Comunal de Prueba',
       dni: '11111111',
@@ -210,7 +210,7 @@ async function main() {
     {
       fullName: 'Juan Quispe',
       dni: '70123456',
-      email: 'juan@sigeli.com',
+      email: 'juan@talento.local',
       gender: 'MASCULINO' as const,
       sector: 'Huari',
       birthDate: '15031995',
@@ -220,7 +220,7 @@ async function main() {
     {
       fullName: 'Maria Condori',
       dni: '70234567',
-      email: 'maria@sigeli.com',
+      email: 'maria@talento.local',
       gender: 'FEMENINO' as const,
       sector: 'Huarmey',
       birthDate: '22081998',
@@ -230,7 +230,7 @@ async function main() {
     {
       fullName: 'Pedro Mamani',
       dni: '70345678',
-      email: 'pedro@sigeli.com',
+      email: 'pedro@talento.local',
       gender: 'MASCULINO' as const,
       sector: 'San Marcos',
       birthDate: '05011988',
@@ -477,7 +477,7 @@ async function main() {
 
   // Contrato activo de demo para evaluación 360° (comunero.test)
   const comuneroTest = await prisma.user.findUnique({
-    where: { email: 'comunero.test@sigeli.com' },
+    where: { email: 'comunero.test@talento.local' },
   });
 
   if (comuneroTest) {
@@ -579,8 +579,8 @@ async function main() {
 
   console.log('Seed completado.');
   console.log('  Admin:     test@admin.com / 1234');
-  console.log('  Comunero:  comunero.test@sigeli.com / Password123! (DNI 00000000)');
-  console.log('  Directiva: directiva.test@sigeli.com / Password123! (DNI 11111111)');
+  console.log('  Comunero:  comunero.test@talento.local / Password123! (DNI 00000000)');
+  console.log('  Directiva: directiva.test@talento.local / Password123! (DNI 11111111)');
   console.log(`  Empresas: ${empresas.length}, comuneros: ${comuneros.length}, capacitaciones: ${capacitaciones.length}, ofertas: ${ofertas.length}`);
   console.log('  Contrato demo ACTIVO listo para Evaluación 360°');
 }

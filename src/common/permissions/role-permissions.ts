@@ -1,7 +1,7 @@
 import { Role } from '@prisma/client';
 
 /**
- * Matriz de permisos SIGELI (Fase 1) según requerimiento del cliente:
+ * Matriz de permisos Talento (Fase 1) según requerimiento del cliente:
  * - COMUNERO: CV, postular, seguimiento, chat, contrato/eval/reclamos propios
  * - EMPRESA: ofertas, CVs, seguimiento, chat, contratos, eval, reclamos, dashboard
  * - DIRECTIVA: monitorea, dashboard, postula por comuneros, seguimiento, chat

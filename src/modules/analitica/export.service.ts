@@ -64,7 +64,7 @@ export class ExportService {
 
     return {
       metadata: {
-        organization: 'SIGELI - Gestión de Empleo Local Inteligente',
+        organization: 'Talento - Sistema de gestión de empleo local inteligente',
         reportingPeriod: new Date().getFullYear().toString(),
         timestamp: new Date().toISOString(),
         integrityHash: `sha256-audit-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -142,7 +142,7 @@ export class ExportService {
     worksheet.getRow(1).fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: '1e40af' } // Azul SIGELI
+      fgColor: { argb: '1e40af' } // Azul Talento
     };
 
     // Agregar datos
@@ -250,7 +250,7 @@ export class ExportService {
       // Pie de página con Hash de Integridad
       doc.moveDown(4);
       doc.rect(50, 700, 500, 1).fill('#ccc');
-      doc.fontSize(8).fillColor('#999').text('Este documento ha sido generado automáticamente por el sistema SIGELI.', 50, 710);
+      doc.fontSize(8).fillColor('#999').text('Este documento ha sido generado automáticamente por el sistema Talento.', 50, 710);
       doc.text(`Hash de Integridad Inmutable: ${report.metadata.integrityHash}`, 50, 720);
       doc.text('Validado mediante protocolos de auditoría social y trazabilidad de datos.', 50, 730);
 

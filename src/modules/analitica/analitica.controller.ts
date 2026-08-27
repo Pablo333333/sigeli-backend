@@ -79,7 +79,7 @@ export class AnaliticaController {
   async exportComuneros(@Res() res: Response) {
     const buffer = await this.exportService.exportComunerosToExcel();
     res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.attachment(`padron-comuneros-sigeli-${new Date().getTime()}.xlsx`);
+    res.attachment(`padron-comuneros-talento-${new Date().getTime()}.xlsx`);
     return res.send(buffer);
   }
 
@@ -88,7 +88,7 @@ export class AnaliticaController {
   async exportCSV(@Res() res: Response) {
     const csv = await this.exportService.exportToCSV();
     res.header('Content-Type', 'text/csv');
-    res.attachment(`reporte-sigeli-${new Date().getTime()}.csv`);
+    res.attachment(`reporte-talento-${new Date().getTime()}.csv`);
     return res.send(csv);
   }
 
@@ -97,7 +97,7 @@ export class AnaliticaController {
   async exportPDF(@Res() res: Response) {
     const buffer = await this.exportService.exportToPDF();
     res.header('Content-Type', 'application/pdf');
-    res.attachment(`reporte-sostenibilidad-sigeli-${new Date().getTime()}.pdf`);
+    res.attachment(`reporte-sostenibilidad-talento-${new Date().getTime()}.pdf`);
     return res.send(buffer);
   }
 }
